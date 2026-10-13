@@ -10,6 +10,10 @@ OceanBrown is a TypeScript pnpm monorepo with intentionally separate runtime bou
 
 Every tenant-owned record carries `businessId`. API queries include that value from the signed server session; callers cannot choose it. Globally unique external IDs and client-generated idempotency IDs prevent duplicate webhook and outbound records. Object storage is MinIO-compatible for local development and can be replaced with S3-compatible storage.
 
-The AI boundary is a provider interface in concept, currently represented only by the deterministic local simulator. The simulator retrieves `PUBLISHED` knowledge for the authenticated tenant, labels every result as simulated, and never connects to WhatsApp. A future provider must remain server-side, apply per-business budgets, and return source/tool traces.
+`packages/shared` also holds the framework-free WhatsApp logic (webhook parsing, Cloud API client, service-window and status rules, opt-out/handover detection), the AI provider layer and AES-256-GCM secret encryption, so the API and worker use exactly the same rules and they are unit-tested in isolation.
 
-Webhook ingestion authenticates the raw payload, stores it before acknowledgement, and leaves asynchronous processing to the worker. Live sending must enforce Meta eligibility, consent, the customer-service window, template status, opt-out suppression, and rate limits at send time.
+The AI boundary (`packages/shared/src/ai.ts`) supports a deterministic simulator, Anthropic Claude and OpenAI through plain HTTPS calls made server-side. It retrieves `PUBLISHED` knowledge for the tenant, instructs the model to answer only from it, returns structured `ANSWER/CLARIFY/HANDOVER` actions with source ids, and short-circuits explicit requests for a person before any model call.
+
+Webhook ingestion authenticates the raw payload, stores it before acknowledgement (idempotent on the body hash) and enqueues a `process-webhook` job. The worker creates customers, conversations and messages, applies opt-out and handover rules, generates AI replies and enqueues `send-message` jobs. Sending re-checks opt-out, the 24-hour window and the connection at send time, retries transient Meta errors with backoff, and marks permanent failures. A scheduled `recover-stranded` job re-enqueues work if Redis was unavailable when the API tried to queue it.
+
+Workspace packages ship TypeScript sources; compiled apps run with `node --import tsx dist/...` so those sources load at runtime.

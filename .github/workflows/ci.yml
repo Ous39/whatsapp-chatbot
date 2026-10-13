@@ -1,0 +1,51 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: oceanbrown
+          POSTGRES_PASSWORD: oceanbrown
+          POSTGRES_DB: oceanbrown
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U oceanbrown" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      DATABASE_URL: postgresql://oceanbrown:oceanbrown@localhost:5433/oceanbrown
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-secret-ci-only-secret-ci-only-secret
+      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm db:migrate
+      - run: pnpm db:seed
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: API smoke test
+        run: |
+          cd apps/api
+          node --import tsx dist/server.js &
+          for i in $(seq 1 30); do curl -sf localhost:4000/health && break; sleep 1; done
+          curl -sf localhost:4000/health | grep '"database":"ok"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:4000/webhooks/meta -H 'content-type: application/json' -d '{}')
+          test "$code" = "401"
+          curl -sf -c jar -H 'content-type: application/json' -d '{"email":"owner@oceanbrown.local","password":"OceanBrown123!"}' localhost:4000/auth/login
+          curl -sf -b jar localhost:4000/overview
+          curl -sf -b jar -X POST localhost:4000/auth/logout -H 'content-type: application/json'

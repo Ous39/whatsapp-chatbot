@@ -112,6 +112,9 @@ importers:
       '@oceanbrown/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@oceanbrown/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       bullmq:
         specifier: ^5.41.9
         version: 5.81.5

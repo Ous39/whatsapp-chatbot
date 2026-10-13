@@ -68,6 +68,8 @@ model Business {
   automationEnabled Boolean @default(false)
   aiProvider String @default("simulator")
   aiMonthlyBudgetCents Int @default(0)
+  welcomeMessage String?
+  handoverMessage String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   users User[]
@@ -105,6 +107,7 @@ model Customer {
   email String?
   consent Boolean @default(false)
   optedOutAt DateTime?
+  lastInboundAt DateTime?
   tags String[]
   notes String?
   createdAt DateTime @default(now())
@@ -134,6 +137,7 @@ model Conversation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([businessId,status,lastMessageAt])
+  @@index([businessId,customerId,status])
 }
 model Message {
   id String @id @default(cuid())
@@ -236,11 +240,15 @@ model WhatsAppConnection {
   businessId           String
   business             Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   phoneNumberId        String   @unique
+  @@index([businessId])
   displayPhone         String?
+  wabaId               String?
+  verifiedName         String?
   status               String   @default("DISCONNECTED")
   encryptedAccessToken String?
   webhookHealthy       Boolean  @default(false)
   lastWebhookAt        DateTime?
+  lastError            String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 }

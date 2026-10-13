@@ -1,0 +1,11 @@
+# Never bake secrets or local artifacts into images
+.env
+.env.*
+!.env.example
+**/node_modules
+**/.next
+**/dist
+**/*.log
+.git
+coverage
+uploads

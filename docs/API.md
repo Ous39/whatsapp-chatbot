@@ -1,20 +1,29 @@
 # API overview
 
-The API listens on port 4000. JSON routes use an HTTP-only `ob_session` cookie.
+The API listens on port 4000. Dashboard routes use the HTTP-only `ob_session` cookie (8-hour JWT that carries only the user id; the user, role and active flag are re-read from the database on every request).
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| POST | `/auth/login` | Create an 8-hour server session |
-| GET | `/auth/me` | Current user and workspace |
-| GET | `/overview` | Tenant metrics |
-| GET | `/conversations` | Tenant inbox |
-| POST | `/conversations/:id/messages` | Idempotently queue a reply |
-| PATCH | `/conversations/:id/mode` | Explicit AI/human/paused mode |
-| GET/POST | `/customers` | CRM records |
-| GET/POST | `/bookings` | Availability-checked booking requests |
-| GET/POST | `/knowledge` | Versioned knowledge sources |
-| POST | `/simulator` | Local-only grounded reply preview |
-| GET/POST | `/webhooks/meta` | Meta verification and signed events |
-| GET | `/health` | Runtime state without secrets |
+| POST | `/auth/register` | Create a workspace + owner (disabled in production unless `ALLOW_SIGNUP=true`) |
+| POST | `/auth/login` | Start a session (rate-limited, 10/min) |
+| POST | `/auth/logout` | End the session |
+| GET | `/auth/me` | Current user |
+| GET | `/overview`, `/analytics` | Tenant metrics |
+| GET/PATCH | `/business` | Workspace profile, AI auto-replies switch, welcome/handover messages |
+| GET/POST/PATCH | `/team`, `/team/:id` | Team members (owners cannot be demoted; you cannot edit yourself) |
+| GET | `/conversations?status=OPEN&mine=true` | Inbox |
+| GET/PATCH | `/conversations/:id` | Thread, notes, 24h-window flag / status + assignment |
+| POST | `/conversations/:id/messages` | Idempotent reply (`clientId`); queued for WhatsApp when live |
+| POST | `/conversations/:id/notes` | Internal note |
+| PATCH | `/conversations/:id/mode` | AI / HUMAN / PAUSED |
+| GET/POST | `/customers`, `/leads`, `/tickets`, `/bookings` (+ PATCH `/:id`) | CRM |
+| GET/POST/PATCH/DELETE | `/knowledge` | Versioned knowledge; only PUBLISHED is used by the agent |
+| GET/POST/PATCH | `/automations`, `/campaigns`, `/saved-replies` | Drafts and saved replies |
+| GET | `/audit` | Audit log |
+| POST | `/simulator` | Agent playground (uses the configured AI provider, never sends) |
+| GET/PUT/DELETE | `/whatsapp/connection` | Tenant WhatsApp number; token encrypted at rest, never returned |
+| POST | `/whatsapp/connection/test` | Verify token + phone number ID with Meta |
+| GET/POST | `/webhooks/meta` | Meta verification handshake and signed events |
+| GET | `/settings/status`, `/health` | Runtime state without secrets |
 
-All tenant routes derive the business ID from the session. Invalid or unauthorized records return 404 or 403 without leaking cross-tenant data.
+Tenant routes derive the business ID from the session; callers cannot choose it. Records from other tenants return 404. Invalid input returns 400 with zod details; unexpected errors return a generic 500.

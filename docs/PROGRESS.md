@@ -1,27 +1,24 @@
-# Credential-free product progress
+# Product progress
 
-## Working locally
+## Working
 
-- [x] Authentication, secure session cookies, registration, and seeded accounts
-- [x] Multi-tenant business workspaces and server-enforced role permissions
-- [x] Guided business profile setup and activation checklist
-- [x] Shared inbox, explicit AI/human/paused modes, and idempotent replies
-- [x] Customer CRM and consent records
-- [x] Lead creation and stage-ready pipeline API
-- [x] Conflict-checked, idempotent booking requests and status transitions
-- [x] Support-ticket creation and updates
-- [x] Draft/approved/published knowledge lifecycle and grounded simulator
-- [x] Team creation, roles, and account activation controls
-- [x] Draft automations and campaigns, disabled by default
-- [x] Saved-reply, audit-history, and analytics APIs
-- [x] PostgreSQL migrations, Redis worker, demo data, health checks, and Docker setup
-- [x] Responsive dashboard, empty states, local simulator warnings, and server-calculated analytics
+- [x] Authentication with server-side session validation, login rate limiting and constant-time login
+- [x] Multi-tenant workspaces and server-enforced role permissions
+- [x] Shared inbox with AI/HUMAN/PAUSED modes, resolve/reopen, assignment, internal notes, live polling
+- [x] WhatsApp Cloud API: signed webhooks, batch parsing, inbound text/media/interactive messages, outbound text, read receipts, delivery statuses
+- [x] Per-tenant WhatsApp connections with AES-256-GCM encrypted tokens and a connection test
+- [x] Opt-out/opt-in (STOP/START), 24-hour service window enforcement, human handover
+- [x] Grounded AI replies from published knowledge: simulator, Anthropic Claude or OpenAI
+- [x] Welcome and handover messages, AI auto-reply master switch
+- [x] Background worker with retries, exhausted-job handling and a stranded-work recovery sweep
+- [x] CRM: customers, leads, bookings (race-safe conflict checks), tickets, saved replies, audit log, analytics
+- [x] CI: install, migrate, seed, typecheck, test, build and an API smoke test
 
-## Deliberately deferred until provider integration
+## Next
 
-- [ ] Meta Cloud API outbound delivery, template sync, media download, and status callbacks
-- [ ] Live AI provider and model-generated responses
-- [ ] External CRM, calendar, order, POS, payment, and object-storage connectors
-- [ ] Campaign execution and automation delivery to real recipients
-
-These deferred items must not be described as live until credentials, provider approval, and end-to-end tests exist.
+- [ ] Template messages (sync approved templates, send outside the 24h window, campaigns)
+- [ ] Media download/storage to S3/MinIO and media replies
+- [ ] Executing automations (after-hours, reminders) and campaign delivery
+- [ ] AI usage budgets per business and cost tracking
+- [ ] Real-time inbox updates (SSE/WebSocket) instead of polling
+- [ ] Password reset, 2FA, and session revocation list
