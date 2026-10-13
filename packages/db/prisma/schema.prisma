@@ -70,6 +70,8 @@ model Business {
   aiMonthlyBudgetCents Int @default(0)
   welcomeMessage String?
   handoverMessage String?
+  defaultLanguage String @default("en")
+  voiceReplies String @default("MIRROR")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   users User[]
@@ -108,6 +110,7 @@ model Customer {
   consent Boolean @default(false)
   optedOutAt DateTime?
   lastInboundAt DateTime?
+  language String?
   tags String[]
   notes String?
   createdAt DateTime @default(now())

@@ -2,9 +2,10 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import {Guard} from "../../components/Guard";
 import {Shell} from "../../components/Shell";
-import {api} from "../../lib/api";
+import {api,API} from "../../lib/api";
 
-type Message={id?:string;body:string;direction:string;createdAt:string;status?:string;metadata?:{transport?:string;source?:string;error?:string;action?:string}|null};
+type Message={id?:string;type?:string;body:string;direction:string;createdAt:string;status?:string;metadata?:{transport?:string;source?:string;error?:string;action?:string;voice?:boolean;language?:string|null;transcriptError?:string;mediaId?:string;media?:{id?:string}|null;voiceError?:string}|null};
+const LANG:Record<string,string>={en:"English",fr:"Français",wo:"Wolof"};
 type Note={id:string;body:string;createdAt:string;author:{name:string}};
 type Customer={name:string;phone:string;optedOutAt?:string|null};
 type Conv={id:string;mode:string;status:string;customer:Customer;messages:Message[];notes?:Note[];assignedTo?:{name:string}|null;serviceWindowOpen?:boolean};
@@ -41,7 +42,7 @@ export default function Inbox(){
     {chosen.status!=="RESOLVED"?<button className="btn secondary" onClick={()=>setStatus("RESOLVED")}>Resolve</button>:<button className="btn secondary" onClick={()=>setStatus("OPEN")}>Reopen</button>}
    </div></div>
    <div className="statusbar"><span className="pill">{chosen.status}</span><span className="pill blue">{chosen.mode} mode</span><span className={chosen.serviceWindowOpen?"pill":"pill gray"}>{chosen.serviceWindowOpen?"24h window open":"24h window closed"}</span></div>
-   <div className="messages">{chosen.messages.map((m,i)=><div className={m.direction==="OUTBOUND"?"bubble out":"bubble"} key={m.id??i}>{m.body}<small>{new Date(m.createdAt).toLocaleString()} · {m.metadata?.source==="ai"?"🤖 ":""}{m.direction==="OUTBOUND"?(m.metadata?.transport==="simulator"?"simulated":ticks[m.status??""]??m.status):"customer"}{m.metadata?.error?` — ${m.metadata.error}`:""}</small></div>)}<div ref={bottom}/></div>
+   <div className="messages">{chosen.messages.map((m,i)=>{const voice=m.metadata?.voice||m.type==="audio";const playable=m.id&&(m.metadata?.media?.id||m.metadata?.mediaId);return <div className={m.direction==="OUTBOUND"?"bubble out":"bubble"} key={m.id??i}>{voice&&<div style={{fontSize:12,fontWeight:600,marginBottom:4}}>🎤 Voice note{m.metadata?.language?` · ${LANG[m.metadata.language]??m.metadata.language}`:""}{m.direction==="INBOUND"&&!m.metadata?.transcriptError?" · transcript":""}</div>}{voice&&playable&&<audio controls preload="none" crossOrigin="use-credentials" src={`${API}/messages/${m.id}/media`} style={{width:"100%",maxWidth:260,display:"block",marginBottom:4}}/>}{m.body}{!voice&&m.metadata?.language&&m.direction==="INBOUND"?<span style={{fontSize:11,opacity:.7}}> · {LANG[m.metadata.language]??m.metadata.language}</span>:null}<small>{new Date(m.createdAt).toLocaleString()} · {m.metadata?.source==="ai"?"🤖 ":""}{m.direction==="OUTBOUND"?(m.metadata?.transport==="simulator"?"simulated":ticks[m.status??""]??m.status):"customer"}{m.metadata?.error?` — ${m.metadata.error}`:""}{m.metadata?.transcriptError?` — transcription failed: ${m.metadata.transcriptError}`:""}</small></div>})}<div ref={bottom}/></div>
    {saved.length>0&&<select className="input" aria-label="Saved reply" defaultValue="" onChange={e=>{const item=saved.find(s=>s.id===e.target.value);if(item)setText(item.body);e.currentTarget.value=""}}><option value="">Insert a saved reply…</option>{saved.map(s=><option key={s.id} value={s.id}>{s.shortcut} · {s.title}</option>)}</select>}
    {blocked&&<p className="error">{blocked}</p>}
    <form className="compose" onSubmit={send}><input className="input" value={text} maxLength={4096} disabled={!!blocked} onChange={e=>setText(e.target.value)} placeholder="Type a reply…"/><button className="btn" disabled={sending||!!blocked}>{sending?"Sending…":"Send"}</button></form>

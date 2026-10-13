@@ -155,9 +155,20 @@ export function shouldApplyStatus(current: string, next: string): boolean {
   return (STATUS_RANK[next] ?? 0) > (STATUS_RANK[current] ?? 0) && current !== "FAILED";
 }
 
-export const OPT_OUT_PATTERN = /^\s*(stop|stop all|unsubscribe|opt[\s-]?out|cancel messages)\s*[.!]*\s*$/i;
-export const OPT_IN_PATTERN = /^\s*(start|unstop|subscribe|opt[\s-]?in)\s*[.!]*\s*$/i;
-export const HANDOVER_PATTERN = /\b(human|real person|a person|speak to (someone|staff|a manager)|talk to (someone|staff|a manager)|manager|complaint|complain|angry|refund|customer service)\b/i;
+// English, French and Wolof keywords. Opt-out/in must be the whole message to avoid false positives.
+export const OPT_OUT_PATTERN = /^\s*(stop|stop all|unsubscribe|opt[\s-]?out|cancel messages|arr[êe]t|arr[êe]ter|d[ée]sabonner|d[ée]sinscrire)\s*[.!]*\s*$/i;
+export const OPT_IN_PATTERN = /^\s*(start|unstop|subscribe|opt[\s-]?in|d[ée]marrer|abonner)\s*[.!]*\s*$/i;
+export const HANDOVER_PATTERN = new RegExp(
+  [
+    // English
+    "\\b(human|real person|a person|speak to (someone|staff|a manager)|talk to (someone|staff|a manager)|manager|complaint|complain|angry|refund|customer service)\\b",
+    // French
+    "(un humain|une vraie personne|parler [àa] (quelqu'un|une personne|un humain|un agent|un conseiller|un responsable)|le responsable|r[ée]clamation|plainte|rembourse)",
+    // Wolof: "wax ak nit" (talk with a person), "nit ku dund" (a real person), "jëkkër/boroom" (owner/boss)
+    "(wax ak (benn )?nit|nit ku dund|boroom bi|dama mere|xaalis bi delloo|delloo xaalis)",
+  ].join("|"),
+  "i",
+);
 
 export function detectIntent(text: string): "OPT_OUT" | "OPT_IN" | "HANDOVER" | null {
   if (OPT_OUT_PATTERN.test(text)) return "OPT_OUT";

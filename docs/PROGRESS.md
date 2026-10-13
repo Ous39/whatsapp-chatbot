@@ -10,6 +10,7 @@
 - [x] Opt-out/opt-in (STOP/START), 24-hour service window enforcement, human handover
 - [x] Grounded AI replies from published knowledge: simulator, Anthropic Claude or OpenAI
 - [x] Welcome and handover messages, AI auto-reply master switch
+- [x] Voice notes in English, French and Wolof: transcription, language memory, spoken replies (Ogg/Opus voice notes), inbox playback, microphone playground, self-hosted Wolof voice service
 - [x] Background worker with retries, exhausted-job handling and a stranded-work recovery sweep
 - [x] CRM: customers, leads, bookings (race-safe conflict checks), tickets, saved replies, audit log, analytics
 - [x] CI: install, migrate, seed, typecheck, test, build and an API smoke test
@@ -17,7 +18,8 @@
 ## Next
 
 - [ ] Template messages (sync approved templates, send outside the 24h window, campaigns)
-- [ ] Media download/storage to S3/MinIO and media replies
+- [ ] Long-term media storage in S3/MinIO (WhatsApp keeps media for a limited time)
+- [ ] Native-speaker review of Wolof system messages; Mandinka support
 - [ ] Executing automations (after-hours, reminders) and campaign delivery
 - [ ] AI usage budgets per business and cost tracking
 - [ ] Real-time inbox updates (SSE/WebSocket) instead of polling

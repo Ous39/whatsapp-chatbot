@@ -1,5 +1,7 @@
 import { Queue, Worker, type ConnectionOptions } from "bullmq";
 import { db } from "@oceanbrown/db";
+import { voiceStatus } from "@oceanbrown/shared";
+import { hasFfmpeg } from "./audio.js";
 import { findStrandedWork, markSendExhausted, processWebhookEvent, sendQueuedMessage, aiConfigFromEnv } from "./processor.js";
 
 const QUEUE_NAME = "oceanbrown-events";
@@ -36,7 +38,7 @@ const worker = new Worker(
       case "process-webhook":
         return processWebhookEvent(String(job.data.eventId), (n, d, id) => enqueue(n, d, id), log);
       case "send-message":
-        return sendQueuedMessage(String(job.data.messageId), log);
+        return sendQueuedMessage(String(job.data.messageId), log, (n, d, id) => enqueue(n, d, id));
       case "recover-stranded": {
         const { eventIds, messageIds } = await findStrandedWork();
         // Same deterministic job ids as the API, so a job that is already queued is not duplicated.
@@ -64,7 +66,7 @@ worker.on("stalled", id => log.warn({ jobId: id }, "Job stalled"));
 
 await queue.upsertJobScheduler("recover-stranded", { every: 60_000 }, { name: "recover-stranded", data: {}, opts: { attempts: 1, removeOnComplete: 10, removeOnFail: 10 } });
 
-log.info({ ai: aiConfigFromEnv().provider, live: process.env.WHATSAPP_LIVE_ENABLED === "true" }, "Worker ready");
+log.info({ ai: aiConfigFromEnv().provider, live: process.env.WHATSAPP_LIVE_ENABLED === "true", voice: voiceStatus(process.env), ffmpeg: await hasFfmpeg() }, "Worker ready");
 
 const stop = async () => {
   await worker.close();

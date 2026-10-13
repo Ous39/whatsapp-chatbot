@@ -9,6 +9,7 @@ import { registerAuth } from "./auth.js";
 import { registerRoutes } from "./routes.js";
 import { registerWebhook } from "./webhook.js";
 import { registerWhatsAppRoutes } from "./whatsapp-routes.js";
+import { registerVoiceRoutes } from "./voice-routes.js";
 
 export async function buildApp() {
   const app = Fastify({
@@ -20,7 +21,8 @@ export async function buildApp() {
   await app.register(cors, { origin: config.appUrl.split(",").map(s => s.trim()), credentials: true, methods: ["GET", "POST", "PUT", "PATCH", "DELETE"] });
   await app.register(cookie);
   await app.register(jwt, { secret: config.jwtSecret, cookie: { cookieName: "ob_session", signed: false }, sign: { algorithm: "HS256" }, verify: { algorithms: ["HS256"] } });
-  await app.register(helmet);
+  // same-site (not same-origin) so the dashboard on app.<domain> can play voice notes served by api.<domain>.
+  await app.register(helmet, { crossOriginResourcePolicy: { policy: "same-site" } });
   await app.register(rateLimit, { max: 300, timeWindow: "1 minute" });
 
   // Keep the raw bytes for Meta signature verification; treat an empty JSON body as {} (e.g. POST /auth/logout).
@@ -42,6 +44,7 @@ export async function buildApp() {
   await registerRoutes(app);
   await registerWebhook(app);
   await registerWhatsAppRoutes(app);
+  await registerVoiceRoutes(app);
 
   app.setNotFoundHandler((_req, reply) => reply.code(404).send({ error: "Not found" }));
   app.setErrorHandler((error, req, reply) => {

@@ -12,6 +12,7 @@ import {
   ticketCreateSchema,
   ticketUpdateSchema,
 } from "@oceanbrown/shared";
+import { voiceStatus } from "@oceanbrown/shared";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { audit, requireAuth, requirePermission, tenantId } from "./auth.js";
@@ -50,7 +51,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get("/business", { preHandler: requireAuth }, async req =>
     db.business.findUniqueOrThrow({
       where: { id: tenantId(req) },
-      select: { id: true, name: true, slug: true, industry: true, timezone: true, phone: true, email: true, brandColor: true, automationEnabled: true, aiProvider: true, welcomeMessage: true, handoverMessage: true, createdAt: true },
+      select: { id: true, name: true, slug: true, industry: true, timezone: true, phone: true, email: true, brandColor: true, automationEnabled: true, aiProvider: true, welcomeMessage: true, handoverMessage: true, defaultLanguage: true, voiceReplies: true, createdAt: true },
     }),
   );
 
@@ -398,6 +399,7 @@ export async function registerRoutes(app: FastifyInstance) {
       ai: { provider: ai.provider, model: ai.provider === "simulator" ? null : ai.model ?? "default", live: ai.provider !== "simulator", label: ai.provider === "simulator" ? "LOCAL SIMULATOR — keyword retrieval only" : `${ai.provider} (grounded in published knowledge)` },
       whatsapp: { ...(connection ?? { status: "DISCONNECTED", webhookHealthy: false }), liveEnabled: config.whatsapp.liveEnabled },
       requirements: { metaAppSecret: !!config.whatsapp.appSecret, metaVerifyToken: !!config.whatsapp.verifyToken, encryptionKey: !!config.encryptionKey },
+      voice: voiceStatus(process.env),
     };
   });
 }

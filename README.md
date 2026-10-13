@@ -24,6 +24,10 @@ Validate with `pnpm typecheck`, `pnpm test` and `pnpm build`. The same steps run
 5. Outbound replies are queued and sent by the worker through the Cloud API, enforcing opt-out and the 24-hour customer service window at send time. Delivery receipts update message status (never downgrading read → delivered).
 6. A recovery sweep re-queues anything stranded if Redis was briefly unavailable.
 
+## Voice notes (English, French, Wolof)
+
+Customers can send WhatsApp voice notes. The agent transcribes them, answers in the same language, and replies with a voice note when the customer used voice. Staff can test by microphone in **Agent & playground**. Wolof speech uses ElevenLabs Scribe for transcription and the bundled open-source Wolof voice in `services/tts-wolof`. Setup: [docs/VOICE.md](docs/VOICE.md).
+
 ## Going live
 
 See [docs/META-SETUP.md](docs/META-SETUP.md). In short:
@@ -36,4 +40,4 @@ See [docs/META-SETUP.md](docs/META-SETUP.md). In short:
 
 ## Docs
 
-`docs/ARCHITECTURE.md`, `docs/API.md`, `docs/META-SETUP.md`, `docs/BACKUP-RESTORE.md`, `docs/PROGRESS.md`, and the security review in `docs/AUDIT.md`.
+`docs/ARCHITECTURE.md`, `docs/API.md`, `docs/META-SETUP.md`, `docs/BACKUP-RESTORE.md`, `docs/VOICE.md`, `docs/PROGRESS.md`, and the security review in `docs/AUDIT.md`.

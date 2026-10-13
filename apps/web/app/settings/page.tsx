@@ -4,8 +4,9 @@ import {Guard} from "../../components/Guard";
 import {Shell} from "../../components/Shell";
 import {api} from "../../lib/api";
 
-type Status={ai:{provider:string;model:string|null;live:boolean;label:string};whatsapp:{status:string;webhookHealthy:boolean;displayPhone?:string|null;liveEnabled:boolean;lastError?:string|null}};
-type Business={automationEnabled:boolean;welcomeMessage:string|null;handoverMessage:string|null};
+type Voice={enabled:boolean;stt:{provider:string;ready:boolean};tts:Record<"en"|"fr"|"wo",{provider:string;ready:boolean}>};
+type Status={voice?:Voice;ai:{provider:string;model:string|null;live:boolean;label:string};whatsapp:{status:string;webhookHealthy:boolean;displayPhone?:string|null;liveEnabled:boolean;lastError?:string|null}};
+type Business={automationEnabled:boolean;welcomeMessage:string|null;handoverMessage:string|null;defaultLanguage:string;voiceReplies:string};
 
 export default function Settings(){
  const [s,setS]=useState<Status>(),[b,setB]=useState<Business>(),[error,setError]=useState(""),[saved,setSaved]=useState("");
@@ -26,6 +27,15 @@ export default function Settings(){
    <div className="card">
     <h2>WhatsApp</h2>
     <div className="row"><div className="grow"><strong>{s?.whatsapp.status??"Loading…"}{s?.whatsapp.displayPhone?` · ${s.whatsapp.displayPhone}`:""}</strong><p>{s?.whatsapp.lastError??`Webhook healthy: ${s?.whatsapp.webhookHealthy?"yes":"no"}`}</p></div><span className={ready?"pill":"pill gray"}>{ready?"Live":"Not live"}</span></div>
+   </div>
+  </div>
+  <div className="card form-grid">
+   <h2 style={{gridColumn:"1/-1"}}>Voice & languages</h2>
+   <label>Default language (until the customer's language is detected)<select className="input" value={b?.defaultLanguage??"en"} onChange={e=>save({defaultLanguage:e.target.value},"Default language saved")}><option value="en">English</option><option value="fr">Français</option><option value="wo">Wolof</option></select></label>
+   <label>Voice replies<select className="input" value={b?.voiceReplies??"MIRROR"} onChange={e=>save({voiceReplies:e.target.value},"Voice replies saved")}><option value="MIRROR">Reply by voice when the customer sends a voice note</option><option value="ALWAYS">Always add a voice note</option><option value="NEVER">Text only</option></select></label>
+   <div style={{gridColumn:"1/-1"}}>
+    <div className="row"><span className={s?.voice?.stt.ready?"pill":"pill gray"}>{s?.voice?.stt.ready?"Ready":"Off"}</span><div className="grow"><strong>Understanding voice notes</strong><p>{s?.voice?.stt.ready?`Transcribed with ${s.voice.stt.provider} (English, French, Wolof)`:"Set STT_PROVIDER (ElevenLabs recommended for Wolof) on the server"}</p></div></div>
+    {(["en","fr","wo"] as const).map(l=><div className="row" key={l}><span className={s?.voice?.tts[l].ready?"pill":"pill gray"}>{s?.voice?.tts[l].ready?"Ready":"Off"}</span><div className="grow"><strong>{({en:"English",fr:"French",wo:"Wolof"})[l]} voice</strong><p>{s?.voice?.tts[l].ready?`Spoken with ${s.voice.tts[l].provider}`:`Set TTS_${l.toUpperCase()} on the server${l==="wo"?" (run services/tts-wolof)":""}`}</p></div></div>)}
    </div>
   </div>
   <form className="card form-grid" onSubmit={e=>{e.preventDefault();save({welcomeMessage:b?.welcomeMessage||null,handoverMessage:b?.handoverMessage||null},"Messages saved")}}>

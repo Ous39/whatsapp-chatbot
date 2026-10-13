@@ -21,6 +21,10 @@ The API listens on port 4000. Dashboard routes use the HTTP-only `ob_session` co
 | GET/POST/PATCH | `/automations`, `/campaigns`, `/saved-replies` | Drafts and saved replies |
 | GET | `/audit` | Audit log |
 | POST | `/simulator` | Agent playground (uses the configured AI provider, never sends) |
+| POST | `/simulator/voice?language=wo` | Playground by voice: raw `audio/*` body → transcript, answer and spoken reply (base64) |
+| POST | `/simulator/speak` | Playground text question with a spoken answer in `en`/`fr`/`wo` |
+| GET | `/voice/status` | Which speech-to-text and per-language voices are configured |
+| GET | `/messages/:id/media` | Streams a voice note from WhatsApp for playback in the inbox |
 | GET/PUT/DELETE | `/whatsapp/connection` | Tenant WhatsApp number; token encrypted at rest, never returned |
 | POST | `/whatsapp/connection/test` | Verify token + phone number ID with Meta |
 | GET/POST | `/webhooks/meta` | Meta verification handshake and signed events |

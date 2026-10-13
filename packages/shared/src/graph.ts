@@ -12,6 +12,7 @@ export type GraphConfig = {
 
 export type OutboundPayload =
   | { type: "text"; to: string; body: string; previewUrl?: boolean; replyToId?: string }
+  | { type: "audio"; to: string; mediaId: string; voice?: boolean }
   | { type: "template"; to: string; name: string; language: string; components?: unknown[] };
 
 // Error codes Meta documents as transient (throttling / temporary failures).
@@ -65,7 +66,9 @@ export async function sendMessage(cfg: GraphConfig, msg: OutboundPayload): Promi
   const body =
     msg.type === "text"
       ? { ...base, type: "text", text: { body: msg.body, preview_url: msg.previewUrl ?? false }, ...(msg.replyToId ? { context: { message_id: msg.replyToId } } : {}) }
-      : { ...base, type: "template", template: { name: msg.name, language: { code: msg.language }, ...(msg.components ? { components: msg.components } : {}) } };
+      : msg.type === "audio"
+        ? { ...base, type: "audio", audio: { id: msg.mediaId, ...(msg.voice ? { voice: true } : {}) } }
+        : { ...base, type: "template", template: { name: msg.name, language: { code: msg.language }, ...(msg.components ? { components: msg.components } : {}) } };
   const json = await call(cfg, `${encodeURIComponent(cfg.phoneNumberId)}/messages`, { method: "POST", body });
   const id = json?.messages?.[0]?.id;
   if (!id) throw new WhatsAppApiError("WhatsApp accepted the request but returned no message id", 200, undefined, false);
@@ -84,4 +87,47 @@ export async function markAsRead(cfg: GraphConfig, messageId: string): Promise<v
 export async function getPhoneNumberInfo(cfg: GraphConfig): Promise<{ displayPhone?: string; verifiedName?: string; qualityRating?: string }> {
   const json = await call(cfg, `${encodeURIComponent(cfg.phoneNumberId)}?fields=display_phone_number,verified_name,quality_rating`, { method: "GET" });
   return { displayPhone: json.display_phone_number, verifiedName: json.verified_name, qualityRating: json.quality_rating };
+}
+
+/** Uploads audio (or other media) and returns the WhatsApp media id. */
+export async function uploadMedia(cfg: GraphConfig, data: Uint8Array<ArrayBuffer>, mime: string, filename: string): Promise<string> {
+  if (!cfg.accessToken) throw new WhatsAppApiError("WhatsApp access token is not configured", 0, undefined, false);
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", mime);
+  form.append("file", new Blob([data], { type: mime }), filename);
+  const f = cfg.fetchImpl ?? fetch;
+  let res: Response;
+  try {
+    res = await f(endpoint(cfg, `${encodeURIComponent(cfg.phoneNumberId)}/media`), { method: "POST", headers: { Authorization: `Bearer ${cfg.accessToken}` }, body: form });
+  } catch (err) {
+    throw new WhatsAppApiError(`Network error uploading media: ${(err as Error).message}`, 0, undefined, true);
+  }
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.id) {
+    const e = json?.error ?? {};
+    throw new WhatsAppApiError(e.message ?? `Media upload failed (${res.status})`, res.status, e.code, res.status === 429 || res.status >= 500);
+  }
+  return String(json.id);
+}
+
+/** Downloads media sent by a customer (voice notes, images). Max 16 MB for audio. */
+export async function downloadMedia(cfg: GraphConfig, mediaId: string, maxBytes = 16 * 1024 * 1024): Promise<{ data: Uint8Array<ArrayBuffer>; mime: string }> {
+  const meta = await call(cfg, encodeURIComponent(mediaId), { method: "GET" });
+  if (!meta?.url) throw new WhatsAppApiError("Media URL missing", 200, undefined, false);
+  if (Number(meta.file_size) > maxBytes) throw new WhatsAppApiError("Media file is too large", 413, undefined, false);
+  // The URL is short-lived and must be fetched with the same bearer token.
+  const host = new URL(meta.url).hostname;
+  if (!/(^|\.)(fbsbx\.com|facebook\.com|whatsapp\.net|fbcdn\.net)$/.test(host) && !cfg.baseUrl) throw new WhatsAppApiError(`Unexpected media host ${host}`, 0, undefined, false);
+  const f = cfg.fetchImpl ?? fetch;
+  let res: Response;
+  try {
+    res = await f(meta.url, { headers: { Authorization: `Bearer ${cfg.accessToken}` } });
+  } catch (err) {
+    throw new WhatsAppApiError(`Network error downloading media: ${(err as Error).message}`, 0, undefined, true);
+  }
+  if (!res.ok) throw new WhatsAppApiError(`Media download failed (${res.status})`, res.status, undefined, res.status >= 500);
+  const buf = new Uint8Array(await res.arrayBuffer());
+  if (buf.byteLength > maxBytes) throw new WhatsAppApiError("Media file is too large", 413, undefined, false);
+  return { data: buf, mime: String(meta.mime_type ?? res.headers.get("content-type") ?? "application/octet-stream") };
 }

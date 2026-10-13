@@ -4,6 +4,7 @@ export * from "./whatsapp.js";
 export * from "./graph.js";
 export * from "./ai.js";
 export * from "./secrets.js";
+export * from "./voice.js";
 
 export const roles = ["SUPER_ADMIN", "OWNER", "ADMIN", "SUPERVISOR", "AGENT"] as const;
 export const roleSchema = z.enum(roles);
@@ -33,7 +34,7 @@ export const businessSchema = z.object({
   email: email.optional().or(z.literal("")),
   brandColor: z.string().regex(/^#[0-9a-f]{6}$/i).default("#8b5e3c"),
 });
-export const businessUpdateSchema = businessSchema.partial().extend({ automationEnabled: z.boolean().optional() });
+export const businessUpdateSchema = businessSchema.partial().extend({ automationEnabled: z.boolean().optional(), defaultLanguage: z.enum(["en", "fr", "wo"]).optional(), voiceReplies: z.enum(["MIRROR", "ALWAYS", "NEVER"]).optional() });
 export const customerSchema = z.object({ name: z.string().trim().min(1).max(120), phone: e164, email: email.optional().or(z.literal("")).transform(v => v || undefined), consent: z.boolean().default(false) });
 export const messageSchema = z.object({ conversationId: z.string().cuid(), body: z.string().trim().min(1).max(4096), clientId: z.string().min(8).max(100) });
 export const noteSchema = z.object({ body: z.string().trim().min(1).max(4000) });

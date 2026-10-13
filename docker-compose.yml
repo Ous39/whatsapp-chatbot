@@ -67,6 +67,13 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
     ports: ["3000:3000"]
     depends_on: [api]
+  # Optional Wolof voice: docker compose --profile voice up -d tts-wolof
+  tts-wolof:
+    build: ./services/tts-wolof
+    profiles: ["voice"]
+    environment:
+      TTS_TOKEN: ${TTS_WO_TOKEN:-}
+    ports: ["127.0.0.1:8000:8000"]
 volumes:
   postgres_data:
   redis_data:

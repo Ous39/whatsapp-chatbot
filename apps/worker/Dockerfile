@@ -1,5 +1,6 @@
 FROM node:22-alpine
-RUN corepack enable
+# ffmpeg converts synthesized speech to Ogg/Opus so WhatsApp shows it as a voice note.
+RUN corepack enable && apk add --no-cache ffmpeg
 WORKDIR /app
 COPY . .
 RUN pnpm install --frozen-lockfile \
