@@ -6,6 +6,8 @@ It runs fully offline by default. Real WhatsApp delivery and a real AI model are
 
 ## Quick start (local)
 
+Requirements: Node.js 22+, Docker Desktop, and pnpm (`corepack enable`). The API, worker and database scripts read the root `.env` automatically.
+
 1. Copy `.env.example` to `.env`. For local use the defaults work; set `ENCRYPTION_KEY` (`openssl rand -hex 32`) if you want to save WhatsApp tokens.
 2. Start infrastructure: `docker compose up -d postgres redis minio`
 3. Install: `pnpm install`
