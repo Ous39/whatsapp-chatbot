@@ -1,0 +1,2 @@
+"use client";import {useEffect,useState} from "react";import {api} from "../lib/api";import {Login} from "./Login";
+export function Guard({children}:{children:React.ReactNode}){const [state,setState]=useState<"loading"|"in"|"out">("loading");const check=()=>api("/auth/me").then(()=>setState("in")).catch(()=>setState("out"));useEffect(()=>{check()},[]);if(state==="loading")return <div className="empty">Loading workspace…</div>;if(state==="out")return <Login onDone={check}/>;return children;}

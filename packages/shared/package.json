@@ -1,0 +1,1 @@
+{"name":"@oceanbrown/shared","version":"0.1.0","type":"module","exports":"./src/index.ts","scripts":{"typecheck":"tsc --noEmit","build":"tsc --noEmit","test":"vitest run --pool=threads --poolOptions.threads.singleThread --passWithNoTests"},"dependencies":{"zod":"^3.24.2"},"devDependencies":{"vitest":"^3.0.7","typescript":"^5.7.3"}}

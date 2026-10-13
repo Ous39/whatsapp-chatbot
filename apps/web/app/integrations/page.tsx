@@ -1,0 +1,1 @@
+import {DataPage} from "../../components/DataPage";export default function P(){return <DataPage title="Integrations" subtitle="Secure connections to WhatsApp and business systems." columns={["provider","capability","status"]}/>}

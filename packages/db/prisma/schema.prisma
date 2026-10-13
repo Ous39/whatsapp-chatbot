@@ -1,0 +1,315 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  OWNER
+  ADMIN
+  SUPERVISOR
+  AGENT
+}
+enum ConversationStatus {
+  OPEN
+  PENDING
+  RESOLVED
+}
+enum ConversationMode {
+  AI
+  HUMAN
+  PAUSED
+}
+enum Direction {
+  INBOUND
+  OUTBOUND
+}
+enum MessageStatus {
+  RECEIVED
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  UNCERTAIN
+}
+enum KnowledgeStatus {
+  DRAFT
+  APPROVED
+  PUBLISHED
+}
+enum BookingStatus {
+  REQUESTED
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+enum LeadStage {
+  NEW
+  QUALIFYING
+  QUALIFIED
+  WON
+  LOST
+}
+
+model Business {
+  id String @id @default(cuid())
+  name String
+  slug String @unique
+  industry String
+  timezone String @default("Africa/Banjul")
+  phone String?
+  email String?
+  brandColor String @default("#8b5e3c")
+  automationEnabled Boolean @default(false)
+  aiProvider String @default("simulator")
+  aiMonthlyBudgetCents Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users User[]
+  customers Customer[]
+  conversations Conversation[]
+  knowledge KnowledgeSource[]
+  bookings Booking[]
+  tickets Ticket[]
+  automations Automation[]
+  campaigns Campaign[]
+  savedReplies SavedReply[]
+  whatsappConnections WhatsAppConnection[]
+  auditLogs AuditLog[]
+}
+model User {
+  id String @id @default(cuid())
+  businessId String?
+  business Business? @relation(fields:[businessId],references:[id],onDelete:Cascade)
+  email String @unique
+  name String
+  passwordHash String
+  role Role
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  assignments Conversation[] @relation("AssignedAgent")
+  notes InternalNote[]
+  @@index([businessId])
+}
+model Customer {
+  id String @id @default(cuid())
+  businessId String
+  business Business @relation(fields:[businessId],references:[id],onDelete:Cascade)
+  phone String
+  name String
+  email String?
+  consent Boolean @default(false)
+  optedOutAt DateTime?
+  tags String[]
+  notes String?
+  createdAt DateTime @default(now())
+  conversations Conversation[]
+  bookings Booking[]
+  leads Lead[]
+  tickets Ticket[]
+  @@unique([businessId,phone])
+  @@index([businessId,name])
+}
+model Conversation {
+  id String @id @default(cuid())
+  businessId String
+  business Business @relation(fields:[businessId],references:[id],onDelete:Cascade)
+  customerId String
+  customer Customer @relation(fields:[customerId],references:[id],onDelete:Cascade)
+  assignedToId String?
+  assignedTo User? @relation("AssignedAgent",fields:[assignedToId],references:[id])
+  status ConversationStatus @default(OPEN)
+  mode ConversationMode @default(AI)
+  subject String?
+  lastMessageAt DateTime @default(now())
+  humanTakenAt DateTime?
+  resolvedAt DateTime?
+  messages Message[]
+  notes InternalNote[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([businessId,status,lastMessageAt])
+}
+model Message {
+  id String @id @default(cuid())
+  businessId String
+  conversationId String
+  conversation Conversation @relation(fields:[conversationId],references:[id],onDelete:Cascade)
+  externalId String?
+  clientId String?
+  direction Direction
+  type String @default("text")
+  body String
+  status MessageStatus
+  metadata Json?
+  createdAt DateTime @default(now())
+  @@unique([businessId,externalId])
+  @@unique([businessId,clientId])
+  @@index([businessId,conversationId,createdAt])
+}
+model InternalNote {
+  id             String       @id @default(cuid())
+  businessId     String
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  authorId       String
+  author         User         @relation(fields: [authorId], references: [id])
+  body           String
+  createdAt      DateTime     @default(now())
+  @@index([businessId, conversationId])
+}
+
+model Lead {
+  id               String    @id @default(cuid())
+  businessId       String
+  customerId       String
+  customer         Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  stage            LeadStage @default(NEW)
+  requestedService String?
+  businessNeed     String?
+  preferredContact String?
+  budgetRange      String?
+  desiredTimeline  String?
+  nextAction       String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  @@index([businessId, stage])
+}
+
+model Booking {
+  id             String        @id @default(cuid())
+  businessId     String
+  business       Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  idempotencyKey String
+  service        String
+  startsAt       DateTime
+  endsAt         DateTime
+  timezone       String
+  status         BookingStatus @default(REQUESTED)
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, startsAt, endsAt])
+}
+
+model Ticket {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  title      String
+  body       String
+  status     String   @default("OPEN")
+  priority   String   @default("NORMAL")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([businessId, status])
+}
+
+model KnowledgeSource {
+  id         String          @id @default(cuid())
+  businessId String
+  business   Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  title      String
+  content    String
+  status     KnowledgeStatus @default(DRAFT)
+  version    Int             @default(1)
+  sourceType String          @default("TEXT")
+  sourceUrl  String?
+  error      String?
+  updatedAt  DateTime        @updatedAt
+  createdAt  DateTime        @default(now())
+  @@index([businessId, status])
+}
+
+model WhatsAppConnection {
+  id                   String   @id @default(cuid())
+  businessId           String
+  business             Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  phoneNumberId        String   @unique
+  displayPhone         String?
+  status               String   @default("DISCONNECTED")
+  encryptedAccessToken String?
+  webhookHealthy       Boolean  @default(false)
+  lastWebhookAt        DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  businessId  String?
+  externalId  String    @unique
+  payload     Json
+  status      String    @default("RECEIVED")
+  error       String?
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  @@index([businessId, status])
+}
+
+model AuditLog {
+  id         String    @id @default(cuid())
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+  @@index([businessId, createdAt])
+}
+
+model Automation {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  trigger    String
+  conditions Json?
+  actions    Json
+  enabled    Boolean  @default(false)
+  timezone   String   @default("Africa/Banjul")
+  quietHours Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([businessId, enabled])
+}
+
+model Campaign {
+  id           String   @id @default(cuid())
+  businessId   String
+  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name         String
+  templateName String?
+  audience     Json
+  status       String   @default("DRAFT")
+  scheduledAt  DateTime?
+  sentCount    Int      @default(0)
+  failedCount  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@index([businessId, status])
+}
+
+model SavedReply {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  title      String
+  body       String
+  shortcut   String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@unique([businessId, shortcut])
+}
