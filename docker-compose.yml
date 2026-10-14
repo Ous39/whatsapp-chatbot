@@ -68,6 +68,21 @@ services:
     ports: ["3000:3000"]
     depends_on: [api]
   # Optional Wolof voice: docker compose --profile voice up -d tts-wolof
+  voice-local:
+    build: ./services/voice-local
+    profiles: ["voice-local"]
+    environment:
+      LOCAL_VOICE_TOKEN: ${LOCAL_VOICE_TOKEN:-}
+      LOCAL_STT_MODEL: ${LOCAL_STT_MODEL:-base}
+      STT_MAX_SECONDS: 120
+    ports: ["127.0.0.1:8001:8001"]
+    volumes: [voice_models:/models]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10m
   tts-wolof:
     build: ./services/tts-wolof
     profiles: ["voice"]
@@ -78,3 +93,4 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
+  voice_models:
