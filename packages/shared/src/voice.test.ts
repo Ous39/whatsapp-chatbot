@@ -28,6 +28,23 @@ describe("language detection", () => {
 });
 
 describe("speech-to-text", () => {
+  it("uses the local raw-audio contract, language hint and token", async () => {
+    let calledUrl = "";
+    let request: any;
+    const fetchImpl = (async (url: string, init: any) => {
+      calledUrl = url;
+      request = init;
+      return new Response(JSON.stringify({ text: " Bonjour ", language: "fr" }));
+    }) as unknown as typeof fetch;
+    const cfg = sttConfigFromEnv({ STT_PROVIDER: "http", STT_HTTP_URL: "http://localhost:8001/transcribe", STT_HTTP_TOKEN: "local-token" });
+    const result = await transcribe({ ...cfg, fetchImpl }, audio, "audio/ogg; codecs=opus", "fr");
+    expect(calledUrl).toBe("http://localhost:8001/transcribe?language=fr");
+    expect(request.headers.Authorization).toBe("Bearer local-token");
+    expect(request.body).toBeInstanceOf(Blob);
+    expect(new Uint8Array(await request.body.arrayBuffer())).toEqual(audio);
+    expect(result.text).toBe("Bonjour");
+    expect(result.language).toBe("fr");
+  });
   it("sends voice notes to ElevenLabs Scribe and maps the language", async () => {
     let form: FormData | undefined;
     let headers: any;
@@ -58,6 +75,20 @@ describe("speech-to-text", () => {
 });
 
 describe("text-to-speech", () => {
+  it.each(["en", "fr"] as const)("uses local Piper for %s", async language => {
+    let request: any;
+    const fetchImpl = (async (_url: string, init: any) => {
+      request = init;
+      return new Response(audio, { headers: { "content-type": "audio/ogg" } });
+    }) as unknown as typeof fetch;
+    const key = language.toUpperCase();
+    const cfg = ttsConfigFromEnv({ [`TTS_${key}`]: "http", [`TTS_${key}_URL`]: "http://localhost:8001/synthesize", [`TTS_${key}_TOKEN`]: "local-token" });
+    const result = await synthesize({ ...cfg, fetchImpl }, "Hello", language);
+    expect(request.headers.Authorization).toBe("Bearer local-token");
+    expect(JSON.parse(request.body)).toEqual({ text: "Hello", language });
+    expect(result.mime).toBe("audio/ogg");
+    expect(result.audio).toEqual(audio);
+  });
   const env = { TTS_EN: "openai", TTS_FR: "elevenlabs", TTS_WO: "http", OPENAI_API_KEY: "o", ELEVENLABS_API_KEY: "e", ELEVENLABS_VOICE_ID: "voice1", TTS_WO_URL: "http://tts-wolof:8000/synthesize", STT_PROVIDER: "elevenlabs" };
   it("reads per-language voices from the environment", () => {
     const cfg = ttsConfigFromEnv(env);

@@ -30,6 +30,12 @@ Validate with `pnpm typecheck`, `pnpm test` and `pnpm build`. The same steps run
 
 Customers can send WhatsApp voice notes. The agent transcribes them, answers in the same language, and replies with a voice note when the customer used voice. Staff can test by microphone in **Agent & playground**. Wolof speech uses ElevenLabs Scribe for transcription and the bundled open-source Wolof voice in `services/tts-wolof`. Setup: [docs/VOICE.md](docs/VOICE.md).
 
+## Open-source local voice
+
+English/French voice interaction can run without paid speech API keys using the optional
+faster-whisper + Piper service. Windows setup and audio tests: [docs/VOICE-LOCAL.md](docs/VOICE-LOCAL.md).
+The existing Wolof service remains separate; this local transcription service does not support Wolof.
+
 ## Going live
 
 See [docs/META-SETUP.md](docs/META-SETUP.md). In short:

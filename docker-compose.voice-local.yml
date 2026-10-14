@@ -1,0 +1,29 @@
+# Optional override when API and worker also run inside Docker.
+# docker compose -f docker-compose.yml -f docker-compose.voice-local.yml --profile voice-local up -d --build voice-local api worker web
+services:
+  api:
+    environment:
+      STT_PROVIDER: http
+      STT_HTTP_URL: http://voice-local:8001/transcribe
+      STT_HTTP_TOKEN: ${LOCAL_VOICE_TOKEN:-}
+      TTS_EN: http
+      TTS_EN_URL: http://voice-local:8001/synthesize
+      TTS_EN_TOKEN: ${LOCAL_VOICE_TOKEN:-}
+      TTS_FR: http
+      TTS_FR_URL: http://voice-local:8001/synthesize
+      TTS_FR_TOKEN: ${LOCAL_VOICE_TOKEN:-}
+    depends_on:
+      voice-local: {condition: service_healthy}
+  worker:
+    environment:
+      STT_PROVIDER: http
+      STT_HTTP_URL: http://voice-local:8001/transcribe
+      STT_HTTP_TOKEN: ${LOCAL_VOICE_TOKEN:-}
+      TTS_EN: http
+      TTS_EN_URL: http://voice-local:8001/synthesize
+      TTS_EN_TOKEN: ${LOCAL_VOICE_TOKEN:-}
+      TTS_FR: http
+      TTS_FR_URL: http://voice-local:8001/synthesize
+      TTS_FR_TOKEN: ${LOCAL_VOICE_TOKEN:-}
+    depends_on:
+      voice-local: {condition: service_healthy}
