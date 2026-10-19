@@ -7,7 +7,7 @@ export function LegalPage({ title, updated, children }: { title: string; updated
       <Link href="/">Return to the platform</Link>
     </header>
     <article className="legal-card">
-      <p className="legal-kicker">OceanBrown WhatsApp Agent</p>
+      <p className="legal-kicker">OceanBrown Connect</p>
       <h1>{title}</h1>
       <p className="muted">Last updated: {updated}</p>
       {children}
