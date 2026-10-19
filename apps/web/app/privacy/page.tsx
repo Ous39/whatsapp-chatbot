@@ -1,6 +1,6 @@
 import { LegalPage } from "../../components/LegalPage";
 
-export const metadata = { title: "Privacy Policy | OceanBrown WhatsApp Agent" };
+export const metadata = { title: "Privacy Policy | OceanBrown Connect" };
 
 export default function PrivacyPolicy() {
   return <LegalPage title="Privacy Policy" updated="19 October 2026">
