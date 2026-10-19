@@ -32,6 +32,10 @@ export const config = {
   trustProxy: process.env.TRUST_PROXY === "true",
   allowSignup: process.env.ALLOW_SIGNUP ? process.env.ALLOW_SIGNUP === "true" : !isProd,
   sessionHours: 8,
+  email: {
+    resendApiKey: process.env.RESEND_API_KEY || undefined,
+    from: process.env.EMAIL_FROM || "OceanBrown <noreply@example.com>",
+  },
   redisUrl: process.env.REDIS_URL ?? "redis://localhost:6379",
   whatsapp: {
     liveEnabled: process.env.WHATSAPP_LIVE_ENABLED === "true",
@@ -40,6 +44,8 @@ export const config = {
     accessToken: process.env.META_ACCESS_TOKEN || undefined,
     phoneNumberId: process.env.META_PHONE_NUMBER_ID || undefined,
     graphVersion: process.env.META_GRAPH_VERSION || undefined,
+    appId: process.env.META_APP_ID || undefined,
+    embeddedSignupConfigId: process.env.META_EMBEDDED_SIGNUP_CONFIG_ID || undefined,
   },
   ai: {
     provider: resolveAiProvider(process.env.AI_PROVIDER),

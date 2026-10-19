@@ -14,20 +14,24 @@ enum Role {
   SUPERVISOR
   AGENT
 }
+
 enum ConversationStatus {
   OPEN
   PENDING
   RESOLVED
 }
+
 enum ConversationMode {
   AI
   HUMAN
   PAUSED
 }
+
 enum Direction {
   INBOUND
   OUTBOUND
 }
+
 enum MessageStatus {
   RECEIVED
   QUEUED
@@ -37,17 +41,20 @@ enum MessageStatus {
   FAILED
   UNCERTAIN
 }
+
 enum KnowledgeStatus {
   DRAFT
   APPROVED
   PUBLISHED
 }
+
 enum BookingStatus {
   REQUESTED
   CONFIRMED
   CANCELLED
   COMPLETED
 }
+
 enum LeadStage {
   NEW
   QUALIFYING
@@ -56,109 +63,166 @@ enum LeadStage {
   LOST
 }
 
-model Business {
-  id String @id @default(cuid())
-  name String
-  slug String @unique
-  industry String
-  timezone String @default("Africa/Banjul")
-  phone String?
-  email String?
-  brandColor String @default("#8b5e3c")
-  automationEnabled Boolean @default(false)
-  aiProvider String @default("simulator")
-  aiMonthlyBudgetCents Int @default(0)
-  welcomeMessage String?
-  handoverMessage String?
-  defaultLanguage String @default("en")
-  voiceReplies String @default("MIRROR")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  users User[]
-  customers Customer[]
-  conversations Conversation[]
-  knowledge KnowledgeSource[]
-  bookings Booking[]
-  tickets Ticket[]
-  automations Automation[]
-  campaigns Campaign[]
-  savedReplies SavedReply[]
-  whatsappConnections WhatsAppConnection[]
-  auditLogs AuditLog[]
+enum PlanTier {
+  FREE
+  STARTER
+  GROWTH
+  PRO
 }
+
+enum TemplateStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAUSED
+  DISABLED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum CampaignRecipientStatus {
+  PENDING
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  SKIPPED
+}
+
+model Business {
+  id                    String               @id @default(cuid())
+  name                  String
+  slug                  String               @unique
+  industry              String
+  timezone              String               @default("Africa/Banjul")
+  phone                 String?
+  email                 String?
+  brandColor            String               @default("#8b5e3c")
+  automationEnabled     Boolean              @default(false)
+  aiProvider            String               @default("simulator")
+  aiMonthlyBudgetCents  Int                  @default(0)
+  welcomeMessage        String?
+  handoverMessage       String?
+  defaultLanguage       String               @default("en")
+  voiceReplies          String               @default("MIRROR")
+  plan                  PlanTier             @default(FREE)
+  planStatus            String               @default("ACTIVE")
+  monthlyMessageLimit   Int                  @default(250)
+  currentPeriodStart    DateTime             @default(now())
+  currentPeriodEnd      DateTime?
+  onboardingCompletedAt DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  users                 User[]
+  customers             Customer[]
+  conversations         Conversation[]
+  knowledge             KnowledgeSource[]
+  bookings              Booking[]
+  tickets               Ticket[]
+  automations           Automation[]
+  campaigns             Campaign[]
+  messageTemplates      MessageTemplate[]
+  passwordResetTokens   PasswordResetToken[]
+  teamInvites           TeamInvite[]
+  savedReplies          SavedReply[]
+  whatsappConnections   WhatsAppConnection[]
+  auditLogs             AuditLog[]
+}
+
 model User {
-  id String @id @default(cuid())
-  businessId String?
-  business Business? @relation(fields:[businessId],references:[id],onDelete:Cascade)
-  email String @unique
-  name String
-  passwordHash String
-  role Role
-  active Boolean @default(true)
-  createdAt DateTime @default(now())
-  assignments Conversation[] @relation("AssignedAgent")
-  notes InternalNote[]
+  id                  String               @id @default(cuid())
+  businessId          String?
+  business            Business?            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  email               String               @unique
+  name                String
+  passwordHash        String
+  role                Role
+  active              Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  passwordChangedAt   DateTime?
+  assignments         Conversation[]       @relation("AssignedAgent")
+  notes               InternalNote[]
+  passwordResetTokens PasswordResetToken[]
+  teamInvitesSent     TeamInvite[]         @relation("InviteSender")
+
   @@index([businessId])
 }
+
 model Customer {
-  id String @id @default(cuid())
-  businessId String
-  business Business @relation(fields:[businessId],references:[id],onDelete:Cascade)
-  phone String
-  name String
-  email String?
-  consent Boolean @default(false)
-  optedOutAt DateTime?
-  lastInboundAt DateTime?
-  language String?
-  tags String[]
-  notes String?
-  createdAt DateTime @default(now())
-  conversations Conversation[]
-  bookings Booking[]
-  leads Lead[]
-  tickets Ticket[]
-  @@unique([businessId,phone])
-  @@index([businessId,name])
+  id                 String              @id @default(cuid())
+  businessId         String
+  business           Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  phone              String
+  name               String
+  email              String?
+  consent            Boolean             @default(false)
+  optedOutAt         DateTime?
+  lastInboundAt      DateTime?
+  language           String?
+  tags               String[]
+  notes              String?
+  createdAt          DateTime            @default(now())
+  conversations      Conversation[]
+  bookings           Booking[]
+  leads              Lead[]
+  tickets            Ticket[]
+  campaignRecipients CampaignRecipient[]
+
+  @@unique([businessId, phone])
+  @@index([businessId, name])
 }
+
 model Conversation {
-  id String @id @default(cuid())
-  businessId String
-  business Business @relation(fields:[businessId],references:[id],onDelete:Cascade)
-  customerId String
-  customer Customer @relation(fields:[customerId],references:[id],onDelete:Cascade)
-  assignedToId String?
-  assignedTo User? @relation("AssignedAgent",fields:[assignedToId],references:[id])
-  status ConversationStatus @default(OPEN)
-  mode ConversationMode @default(AI)
-  subject String?
-  lastMessageAt DateTime @default(now())
-  humanTakenAt DateTime?
-  resolvedAt DateTime?
-  messages Message[]
-  notes InternalNote[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  @@index([businessId,status,lastMessageAt])
-  @@index([businessId,customerId,status])
+  id            String             @id @default(cuid())
+  businessId    String
+  business      Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId    String
+  customer      Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedToId  String?
+  assignedTo    User?              @relation("AssignedAgent", fields: [assignedToId], references: [id])
+  status        ConversationStatus @default(OPEN)
+  mode          ConversationMode   @default(AI)
+  subject       String?
+  lastMessageAt DateTime           @default(now())
+  humanTakenAt  DateTime?
+  resolvedAt    DateTime?
+  messages      Message[]
+  notes         InternalNote[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([businessId, status, lastMessageAt])
+  @@index([businessId, customerId, status])
 }
+
 model Message {
-  id String @id @default(cuid())
-  businessId String
+  id             String        @id @default(cuid())
+  businessId     String
   conversationId String
-  conversation Conversation @relation(fields:[conversationId],references:[id],onDelete:Cascade)
-  externalId String?
-  clientId String?
-  direction Direction
-  type String @default("text")
-  body String
-  status MessageStatus
-  metadata Json?
-  createdAt DateTime @default(now())
-  @@unique([businessId,externalId])
-  @@unique([businessId,clientId])
-  @@index([businessId,conversationId,createdAt])
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  externalId     String?
+  clientId       String?
+  direction      Direction
+  type           String        @default("text")
+  body           String
+  status         MessageStatus
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+
+  @@unique([businessId, externalId])
+  @@unique([businessId, clientId])
+  @@index([businessId, conversationId, createdAt])
 }
+
 model InternalNote {
   id             String       @id @default(cuid())
   businessId     String
@@ -168,6 +232,7 @@ model InternalNote {
   author         User         @relation(fields: [authorId], references: [id])
   body           String
   createdAt      DateTime     @default(now())
+
   @@index([businessId, conversationId])
 }
 
@@ -185,6 +250,7 @@ model Lead {
   nextAction       String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+
   @@index([businessId, stage])
 }
 
@@ -203,6 +269,7 @@ model Booking {
   notes          String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+
   @@unique([businessId, idempotencyKey])
   @@index([businessId, startsAt, endsAt])
 }
@@ -219,6 +286,7 @@ model Ticket {
   priority   String   @default("NORMAL")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
   @@index([businessId, status])
 }
 
@@ -235,25 +303,27 @@ model KnowledgeSource {
   error      String?
   updatedAt  DateTime        @updatedAt
   createdAt  DateTime        @default(now())
+
   @@index([businessId, status])
 }
 
 model WhatsAppConnection {
-  id                   String   @id @default(cuid())
+  id                   String    @id @default(cuid())
   businessId           String
-  business             Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  phoneNumberId        String   @unique
-  @@index([businessId])
+  business             Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  phoneNumberId        String    @unique
   displayPhone         String?
   wabaId               String?
   verifiedName         String?
-  status               String   @default("DISCONNECTED")
+  status               String    @default("DISCONNECTED")
   encryptedAccessToken String?
-  webhookHealthy       Boolean  @default(false)
+  webhookHealthy       Boolean   @default(false)
   lastWebhookAt        DateTime?
   lastError            String?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([businessId])
 }
 
 model WebhookEvent {
@@ -265,6 +335,7 @@ model WebhookEvent {
   error       String?
   receivedAt  DateTime  @default(now())
   processedAt DateTime?
+
   @@index([businessId, status])
 }
 
@@ -278,6 +349,7 @@ model AuditLog {
   entityId   String?
   metadata   Json?
   createdAt  DateTime  @default(now())
+
   @@index([businessId, createdAt])
 }
 
@@ -294,23 +366,107 @@ model Automation {
   quietHours Json?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
   @@index([businessId, enabled])
 }
 
 model Campaign {
-  id           String   @id @default(cuid())
-  businessId   String
-  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name         String
-  templateName String?
-  audience     Json
-  status       String   @default("DRAFT")
-  scheduledAt  DateTime?
-  sentCount    Int      @default(0)
-  failedCount  Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String              @id @default(cuid())
+  businessId     String
+  business       Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name           String
+  templateName   String?
+  audience       Json
+  language       String              @default("en_US")
+  audienceTag    String?
+  status         CampaignStatus      @default(DRAFT)
+  scheduledAt    DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  totalCount     Int                 @default(0)
+  sentCount      Int                 @default(0)
+  deliveredCount Int                 @default(0)
+  readCount      Int                 @default(0)
+  failedCount    Int                 @default(0)
+  skippedCount   Int                 @default(0)
+  lastError      String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  recipients     CampaignRecipient[]
+
   @@index([businessId, status])
+  @@index([status, scheduledAt])
+}
+
+model CampaignRecipient {
+  id         String                  @id @default(cuid())
+  businessId String
+  campaignId String
+  campaign   Campaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer                @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  status     CampaignRecipientStatus @default(PENDING)
+  externalId String?
+  error      String?
+  attempts   Int                     @default(0)
+  sentAt     DateTime?
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+
+  @@unique([campaignId, customerId])
+  @@index([businessId, status])
+  @@index([campaignId, status])
+}
+
+model MessageTemplate {
+  id           String         @id @default(cuid())
+  businessId   String
+  business     Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  externalId   String
+  name         String
+  language     String
+  category     String
+  status       TemplateStatus
+  components   Json
+  qualityScore String?
+  lastSyncedAt DateTime       @default(now())
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([businessId, externalId])
+  @@unique([businessId, name, language])
+  @@index([businessId, status])
+}
+
+model PasswordResetToken {
+  id         String    @id @default(cuid())
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model TeamInvite {
+  id          String    @id @default(cuid())
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  email       String
+  name        String
+  role        Role
+  tokenHash   String    @unique
+  invitedById String
+  invitedBy   User      @relation("InviteSender", fields: [invitedById], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([businessId, email])
 }
 
 model SavedReply {
@@ -322,5 +478,6 @@ model SavedReply {
   shortcut   String
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
   @@unique([businessId, shortcut])
 }

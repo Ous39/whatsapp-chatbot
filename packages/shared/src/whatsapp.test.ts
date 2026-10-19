@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { detectIntent, isWithinServiceWindow, parseWebhookPayload, shouldApplyStatus, toE164, toWaRecipient } from "./whatsapp";
-import { sendMessage, WhatsAppApiError } from "./graph";
+import { listMessageTemplates, sendMessage, WhatsAppApiError } from "./graph";
 import { decryptSecret, encryptSecret, maskSecret } from "./secrets";
 import { buildTurns, generateReply, parseModelOutput, rankKnowledge } from "./ai";
 
@@ -99,6 +99,19 @@ describe("graph client", () => {
     expect(throttled instanceof WhatsAppApiError && throttled.retryable).toBe(true);
     const window = await send(mk(400, 131047));
     expect(window instanceof WhatsAppApiError && window.retryable).toBe(false);
+  });
+  it("syncs approved templates across Meta pagination", async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      return new Response(JSON.stringify(calls === 1
+        ? { data: [{ id: "1", name: "order_update", language: "en_US", category: "UTILITY", status: "APPROVED", components: [] }], paging: { next: "https://graph.facebook.com/v23.0/WABA/message_templates?after=next" } }
+        : { data: [{ id: "2", name: "sale", language: "fr", category: "MARKETING", status: "PENDING", components: [] }] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const rows = await listMessageTemplates({ accessToken: "t".repeat(20), phoneNumberId: "1", fetchImpl }, "WABA");
+    expect(rows.map(row => row.name)).toEqual(["order_update", "sale"]);
+    expect(rows[0]?.status).toBe("APPROVED");
+    expect(calls).toBe(2);
   });
 });
 

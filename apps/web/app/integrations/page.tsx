@@ -1,26 +1,30 @@
 "use client";
-import {useEffect,useState} from "react";
+import {useEffect,useRef,useState} from "react";
 import {Guard} from "../../components/Guard";
 import {Shell} from "../../components/Shell";
 import {api} from "../../lib/api";
 
 type Connection={id:string;phoneNumberId:string;wabaId:string|null;displayPhone:string|null;verifiedName:string|null;status:string;webhookHealthy:boolean;lastWebhookAt:string|null;lastError:string|null;hasAccessToken:boolean};
 type State={connection:Connection|null;webhookUrl:string;liveEnabled:boolean;server:{appSecret:boolean;verifyToken:boolean;encryptionKey:boolean;envAccessToken:string|null}};
+type Embedded={enabled:boolean;appId:string|null;configId:string|null;graphVersion:string};
+declare global { interface Window { FB?: { init:(config:Record<string,unknown>)=>void;login:(callback:(response:any)=>void,options:Record<string,unknown>)=>void }; fbAsyncInit?:()=>void } }
 
 function Check({ok,label,hint}:{ok:boolean;label:string;hint:string}){return <div className="row"><span className={ok?"pill":"pill gray"}>{ok?"Ready":"Missing"}</span><div className="grow"><strong>{label}</strong><p>{hint}</p></div></div>}
 
 export default function Integrations(){
- const [state,setState]=useState<State>(),[form,setForm]=useState({phoneNumberId:"",wabaId:"",displayPhone:"",accessToken:""}),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
+ const [state,setState]=useState<State>(),[embedded,setEmbedded]=useState<Embedded>(),[form,setForm]=useState({phoneNumberId:"",wabaId:"",displayPhone:"",accessToken:""}),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);const signup=useRef<{code?:string;phoneNumberId?:string;wabaId?:string}>({});
  const load=()=>api<State>("/whatsapp/connection").then(s=>{setState(s);if(s.connection)setForm(f=>({...f,phoneNumberId:s.connection!.phoneNumberId,wabaId:s.connection!.wabaId??"",displayPhone:s.connection!.displayPhone??""}))}).catch(e=>setError(e.message));
- useEffect(()=>{load()},[]);
+ useEffect(()=>{load();api<Embedded>("/whatsapp/embedded/config").then(config=>{setEmbedded(config);if(!config.enabled||!config.appId)return;window.fbAsyncInit=()=>window.FB?.init({appId:config.appId,cookie:true,xfbml:false,version:config.graphVersion});if(!document.getElementById("facebook-jssdk")){const script=document.createElement("script");script.id="facebook-jssdk";script.async=true;script.defer=true;script.crossOrigin="anonymous";script.src="https://connect.facebook.net/en_US/sdk.js";document.body.appendChild(script)}}).catch(()=>{});const listener=(event:MessageEvent)=>{let host="";try{host=new URL(event.origin).hostname}catch{return}if(!/(^|\.)facebook\.com$|(^|\.)facebook\.net$/.test(host))return;let data:any=event.data;try{if(typeof data==="string")data=JSON.parse(data)}catch{return}if(data?.type==="WA_EMBEDDED_SIGNUP"&&data?.data?.phone_number_id&&data?.data?.waba_id){signup.current.phoneNumberId=String(data.data.phone_number_id);signup.current.wabaId=String(data.data.waba_id)}};window.addEventListener("message",listener);return()=>window.removeEventListener("message",listener)},[]);
  const run=async(fn:()=>Promise<unknown>,ok:string)=>{setBusy(true);setError("");setNotice("");try{await fn();setNotice(ok);await load()}catch(e){setError((e as Error).message)}finally{setBusy(false)}};
  const save=(e:React.FormEvent)=>{e.preventDefault();const body:Record<string,string>={phoneNumberId:form.phoneNumberId.trim(),wabaId:form.wabaId.trim(),displayPhone:form.displayPhone.trim()};if(form.accessToken.trim())body.accessToken=form.accessToken.trim();run(()=>api("/whatsapp/connection",{method:"PUT",body:JSON.stringify(body)}),"Saved. Now run the connection test.").then(()=>setForm(f=>({...f,accessToken:""})))};
  const test=()=>run(()=>api("/whatsapp/connection/test",{method:"POST",body:"{}"}),"Connected — Meta accepted the token and phone number ID.");
  const remove=()=>{if(confirm("Disconnect this WhatsApp number? Incoming messages will stop being processed."))run(()=>api("/whatsapp/connection",{method:"DELETE"}),"Disconnected.")};
+ const connectEmbedded=()=>{setError("");setNotice("");signup.current={};if(!embedded?.configId||!window.FB)return setError("Meta Embedded Signup is still loading. Try again in a moment.");window.FB.login(async response=>{const code=response?.authResponse?.code;if(!code)return setError("Meta signup was cancelled or did not return an authorization code.");signup.current.code=String(code);for(let i=0;i<20&&!signup.current.phoneNumberId;i++)await new Promise(resolve=>setTimeout(resolve,250));const data=signup.current;if(!data.phoneNumberId||!data.wabaId)return setError("Meta did not return the WhatsApp number details. Complete every signup step and try again.");run(()=>api("/whatsapp/embedded/complete",{method:"POST",body:JSON.stringify(data)}),"WhatsApp connected successfully through Meta.")},{config_id:embedded.configId,response_type:"code",override_default_response_type:true,extras:{setup:{}}})};
  const c=state?.connection;
  return <Guard><Shell title="Integrations" subtitle="Connect your WhatsApp Business number through Meta's Cloud API.">
   {!state?.liveEnabled&&<div className="notice"><strong>Live sending is switched off on the server.</strong> You can save and test the connection now; replies are only delivered once an administrator sets <code>WHATSAPP_LIVE_ENABLED=true</code>.</div>}
   {error&&<p className="error">{error}</p>}{notice&&<p className="pill" style={{display:"inline-block"}}>{notice}</p>}
+  {embedded?.enabled&&<div className="card" style={{marginBottom:18}}><h2>Fast connection</h2><p className="muted">Sign in with Meta, choose your business and WhatsApp number, and OceanBrown will configure the connection securely.</p><button className="btn" disabled={busy} onClick={connectEmbedded}>Connect with Facebook</button></div>}
   <div className="split">
    <form className="card form-grid" onSubmit={save}>
     <h2 style={{gridColumn:"1/-1"}}>WhatsApp Cloud API</h2>

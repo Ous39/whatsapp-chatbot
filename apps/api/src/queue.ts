@@ -31,12 +31,12 @@ function getQueue() {
  * source is persisted first, and the worker's recovery sweep re-enqueues
  * anything left behind, so an unavailable Redis never loses data.
  */
-export async function enqueue(name: "process-webhook" | "send-message", data: Record<string, string>, jobId: string, log?: { warn: (o: object, m: string) => void }) {
+export async function enqueue(name: "process-webhook" | "send-message" | "send-campaign-recipient" | "start-campaign", data: Record<string, string>, jobId: string, log?: { warn: (o: object, m: string) => void }, delay = 0) {
   try {
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("Queue timeout")), 3000); });
     try {
-      await Promise.race([getQueue().add(name, data, { jobId }), timeout]);
+      await Promise.race([getQueue().add(name, data, { jobId, ...(delay > 0 ? { delay } : {}) }), timeout]);
     } finally {
       clearTimeout(timer);
     }

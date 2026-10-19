@@ -89,6 +89,43 @@ export async function getPhoneNumberInfo(cfg: GraphConfig): Promise<{ displayPho
   return { displayPhone: json.display_phone_number, verifiedName: json.verified_name, qualityRating: json.quality_rating };
 }
 
+export type WhatsAppTemplate = {
+  id: string;
+  name: string;
+  language: string;
+  category: string;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "PAUSED" | "DISABLED";
+  components: unknown[];
+  qualityScore?: string;
+};
+
+/** Fetches every template for a WhatsApp Business Account, following Meta pagination. */
+export async function listMessageTemplates(cfg: GraphConfig, wabaId: string, maxPages = 20): Promise<WhatsAppTemplate[]> {
+  const rows: WhatsAppTemplate[] = [];
+  let path = `${encodeURIComponent(wabaId)}/message_templates?fields=id,name,language,category,status,components,quality_score&limit=100`;
+  for (let page = 0; page < maxPages && path; page += 1) {
+    const json = await call(cfg, path, { method: "GET" });
+    for (const item of Array.isArray(json?.data) ? json.data : []) {
+      if (!item?.id || !item?.name || !item?.language) continue;
+      const status = ["PENDING", "APPROVED", "REJECTED", "PAUSED", "DISABLED"].includes(item.status) ? item.status : "PENDING";
+      rows.push({
+        id: String(item.id),
+        name: String(item.name),
+        language: String(item.language),
+        category: String(item.category ?? "UTILITY"),
+        status,
+        components: Array.isArray(item.components) ? item.components : [],
+        qualityScore: item.quality_score?.score ? String(item.quality_score.score) : undefined,
+      });
+    }
+    const next = json?.paging?.next;
+    if (!next) break;
+    const url = new URL(String(next));
+    path = `${url.pathname.replace(/^\/v\d+(?:\.\d+)?\//, "")}${url.search}`;
+  }
+  return rows;
+}
+
 /** Uploads audio (or other media) and returns the WhatsApp media id. */
 export async function uploadMedia(cfg: GraphConfig, data: Uint8Array<ArrayBuffer>, mime: string, filename: string): Promise<string> {
   if (!cfg.accessToken) throw new WhatsAppApiError("WhatsApp access token is not configured", 0, undefined, false);

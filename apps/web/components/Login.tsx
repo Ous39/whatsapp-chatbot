@@ -1,2 +1,50 @@
-"use client";import {useState} from "react";import {api} from "../lib/api";
-export function Login({onDone}:{onDone:()=>void}){const demo=process.env.NODE_ENV!=="production";const [email,setEmail]=useState(demo?"owner@oceanbrown.local":""),[password,setPassword]=useState(demo?"OceanBrown123!":""),[error,setError]=useState("");return <div style={{maxWidth:420,margin:"12vh auto"}} className="card"><div className="logo" style={{color:"var(--ink)",marginLeft:0}}><span className="mark">O</span>OceanBrown</div><h2>Welcome back</h2><p style={{color:"var(--muted)"}}>Sign in to your business workspace.</p><form onSubmit={async e=>{e.preventDefault();setError("");try{await api("/auth/login",{method:"POST",body:JSON.stringify({email,password})});onDone()}catch(x){setError((x as Error).message)}}}><label>Email</label><input className="input" type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/><label style={{display:"block",marginTop:14}}>Password</label><input className="input" type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/>{error&&<p className="error">{error}</p>}<button className="btn" style={{width:"100%",marginTop:18}}>Sign in</button></form>{demo&&<p style={{fontSize:12,color:"var(--muted)"}}>Local demo account. Change the password before deployment.</p>}</div>}
+"use client";
+import { useState } from "react";
+import { api } from "../lib/api";
+
+type Mode = "login" | "register" | "forgot" | "reset";
+
+export function Login({ onDone }: { onDone: () => void }) {
+  const demo = process.env.NODE_ENV !== "production";
+  const [mode, setMode] = useState<Mode>("login");
+  const [form, setForm] = useState<Record<string, string>>({ email: demo ? "owner@oceanbrown.local" : "", password: demo ? "OceanBrown123!" : "" });
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const set = (name: string, value: string) => setForm(current => ({ ...current, [name]: value }));
+  const switchMode = (next: Mode) => { setMode(next); setError(""); setMessage(""); };
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault(); setError(""); setMessage("");
+    try {
+      if (mode === "login") {
+        await api("/auth/login", { method: "POST", body: JSON.stringify({ email: form.email, password: form.password }) });
+        return onDone();
+      }
+      if (mode === "register") {
+        await api("/auth/register", { method: "POST", body: JSON.stringify({ name: form.name, email: form.email, password: form.password, businessName: form.businessName, industry: form.industry }) });
+        return onDone();
+      }
+      if (mode === "forgot") {
+        const result = await api<{ message: string; resetToken?: string }>("/auth/password/forgot", { method: "POST", body: JSON.stringify({ email: form.email }) });
+        setMessage(result.message);
+        if (result.resetToken) { set("token", result.resetToken); setMode("reset"); }
+        return;
+      }
+      await api("/auth/password/reset", { method: "POST", body: JSON.stringify({ token: form.token, password: form.password }) });
+      setMessage("Password updated. You can now sign in."); setMode("login"); set("password", "");
+    } catch (cause) { setError((cause as Error).message); }
+  };
+  const title = mode === "login" ? "Welcome back" : mode === "register" ? "Create your free workspace" : mode === "forgot" ? "Reset your password" : "Choose a new password";
+  return <div className="auth-wrap"><div className="card auth-card"><div className="logo" style={{ color: "var(--ink)", marginLeft: 0 }}><span className="mark">O</span>OceanBrown</div><h2>{title}</h2>
+    <p className="muted">{mode === "register" ? "Start managing customer conversations in minutes." : mode === "login" ? "Sign in to your business workspace." : "Use a secure, time-limited reset link."}</p>
+    <form onSubmit={submit} className="auth-form">
+      {mode === "register" && <><label>Full name<input className="input" required value={form.name ?? ""} onChange={e => set("name", e.target.value)} /></label><label>Business name<input className="input" required value={form.businessName ?? ""} onChange={e => set("businessName", e.target.value)} /></label><label>Industry<input className="input" value={form.industry ?? ""} onChange={e => set("industry", e.target.value)} placeholder="Retail, hospitality, healthcare…" /></label></>}
+      {mode !== "reset" && <label>Email<input className="input" type="email" autoComplete="username" required value={form.email ?? ""} onChange={e => set("email", e.target.value)} /></label>}
+      {mode === "reset" && <label>Reset token<input className="input" required value={form.token ?? ""} onChange={e => set("token", e.target.value)} /></label>}
+      {(mode === "login" || mode === "register" || mode === "reset") && <label>Password<input className="input" type="password" minLength={mode === "login" ? 1 : 10} autoComplete={mode === "login" ? "current-password" : "new-password"} required value={form.password ?? ""} onChange={e => set("password", e.target.value)} /></label>}
+      {error && <p className="error">{error}</p>}{message && <p className="success">{message}</p>}
+      <button className="btn" style={{ width: "100%" }}>{mode === "login" ? "Sign in" : mode === "register" ? "Create free account" : mode === "forgot" ? "Request reset" : "Update password"}</button>
+    </form>
+    <div className="auth-links">{mode === "login" ? <><button onClick={() => switchMode("forgot")}>Forgot password?</button><button onClick={() => switchMode("register")}>Create an account</button></> : <button onClick={() => switchMode("login")}>Back to sign in</button>}</div>
+    {demo && mode === "login" && <p className="muted small">Local demo account. Change the password before deployment.</p>}
+  </div></div>;
+}

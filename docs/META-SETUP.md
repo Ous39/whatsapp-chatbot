@@ -58,3 +58,15 @@ Send a WhatsApp message to your number; it appears in the Inbox and the Integrat
 ## Test checklist before launch
 
 Incoming text/media, duplicate delivery, out-of-order status callbacks, invalid signature (401), wrong verify token (403), expired token, throttling, STOP/START, handover, and a reply after the 24h window. Complete Meta business verification and display-name review. Do not describe OceanBrown as a Meta partner unless Meta confirms it.
+# Embedded Signup
+
+For the self-service **Connect with Facebook** button, create an Embedded Signup configuration in the Meta app and set:
+
+```env
+META_APP_ID=your_meta_app_id
+META_APP_SECRET=your_meta_app_secret
+META_EMBEDDED_SIGNUP_CONFIG_ID=your_configuration_id
+ENCRYPTION_KEY=64_hex_characters
+```
+
+The browser receives only the public App ID and Configuration ID. The API exchanges the one-time authorization code server-side, encrypts the resulting access token, verifies the selected phone number and never returns the token to the dashboard. Manual system-user token setup remains available as an administrator fallback.
