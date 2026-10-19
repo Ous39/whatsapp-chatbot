@@ -1,10 +1,10 @@
 import { LegalPage } from "../../components/LegalPage";
 
-export const metadata = { title: "User Data Deletion | OceanBrown WhatsApp Agent" };
+export const metadata = { title: "User Data Deletion | OceanBrown Connect" };
 
 export default function DataDeletion() {
   return <LegalPage title="User Data Deletion Instructions" updated="19 October 2026">
-    <p>You can request deletion of information associated with OceanBrown WhatsApp Agent, including information received through Meta or WhatsApp.</p>
+    <p>You can request deletion of information associated with OceanBrown Connect, including information received through Meta or WhatsApp.</p>
 
     <h2>How to request deletion</h2>
     <ol>
