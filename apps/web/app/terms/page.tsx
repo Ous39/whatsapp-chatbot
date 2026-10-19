@@ -1,10 +1,10 @@
 import { LegalPage } from "../../components/LegalPage";
 
-export const metadata = { title: "Terms of Service | OceanBrown WhatsApp Agent" };
+export const metadata = { title: "Terms of Service | OceanBrown Connect" };
 
 export default function Terms() {
   return <LegalPage title="Terms of Service" updated="19 October 2026">
-    <p>These terms govern access to OceanBrown WhatsApp Agent. By creating an account or using the service, you agree to these terms on behalf of yourself and, where applicable, your business.</p>
+    <p>These terms govern access to OceanBrown Connect. By creating an account or using the service, you agree to these terms on behalf of yourself and, where applicable, your business.</p>
 
     <h2>Permitted use</h2>
     <p>You may use the service for lawful customer support, operations and marketing. You must provide accurate account information, protect login credentials, control staff access and promptly report suspected compromise.</p>
