@@ -1,8 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import bcrypt from "bcryptjs";
+import { createHash, randomBytes } from "node:crypto";
 import { db } from "@oceanbrown/db";
-import { can, loginSchema, registerSchema, type Role, type SessionUser } from "@oceanbrown/shared";
+import { can, loginSchema, passwordResetRequestSchema, passwordResetSchema, registerSchema, type Role, type SessionUser } from "@oceanbrown/shared";
 import { config } from "./config.js";
+import { sendTransactionalEmail } from "./email.js";
 
 declare module "@fastify/jwt" {
   interface FastifyJWT {
@@ -28,14 +30,16 @@ const getDummyHash = () => (dummyHash ??= bcrypt.hash(crypto.randomUUID(), 12));
  */
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
   let sub: string;
+  let issuedAt = 0;
   try {
-    const decoded = await req.jwtVerify<{ sub?: string; id?: string }>();
+    const decoded = await req.jwtVerify<{ sub?: string; id?: string; iat?: number }>();
     sub = decoded.sub ?? decoded.id ?? "";
+    issuedAt = decoded.iat ?? 0;
   } catch {
     return reply.code(401).send({ error: "Authentication required" });
   }
-  const user = sub ? await db.user.findUnique({ where: { id: sub }, select: { id: true, businessId: true, role: true, email: true, name: true, active: true } }) : null;
-  if (!user?.active) {
+  const user = sub ? await db.user.findUnique({ where: { id: sub }, select: { id: true, businessId: true, role: true, email: true, name: true, active: true, passwordChangedAt: true } }) : null;
+  if (!user?.active || (user.passwordChangedAt && issuedAt * 1000 < user.passwordChangedAt.getTime())) {
     reply.clearCookie(COOKIE, { path: "/" });
     return reply.code(401).send({ error: "Authentication required" });
   }
@@ -71,6 +75,7 @@ async function startSession(reply: FastifyReply, user: { id: string; businessId:
 }
 
 const authRateLimit = { rateLimit: { max: 10, timeWindow: "1 minute" } };
+const tokenHash = (value: string) => createHash("sha256").update(value).digest("hex");
 
 export async function registerAuth(app: FastifyInstance) {
   app.post("/auth/register", { config: authRateLimit }, async (req, reply) => {
@@ -106,6 +111,43 @@ export async function registerAuth(app: FastifyInstance) {
       return reply.code(401).send({ error: "Invalid credentials" });
     }
     return { user: await startSession(reply, user) };
+  });
+
+  app.post("/auth/password/forgot", { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } }, async (req, reply) => {
+    const parsed = passwordResetRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "A valid email is required" });
+    const user = await db.user.findUnique({ where: { email: parsed.data.email }, select: { id: true, businessId: true, active: true } });
+    let rawToken: string | undefined;
+    if (user?.active) {
+      rawToken = randomBytes(32).toString("hex");
+      await db.$transaction([
+        db.passwordResetToken.deleteMany({ where: { userId: user.id, usedAt: null } }),
+        db.passwordResetToken.create({ data: { userId: user.id, businessId: user.businessId, tokenHash: tokenHash(rawToken), expiresAt: new Date(Date.now() + 30 * 60_000) } }),
+      ]);
+      const resetUrl = `${(config.appUrl.split(",")[0]?.trim() || "http://localhost:3000").replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(rawToken)}`;
+      const delivery = await sendTransactionalEmail({ to: parsed.data.email, subject: "Reset your OceanBrown password", text: `Reset your password within 30 minutes: ${resetUrl}`, html: `<p>Reset your OceanBrown password within 30 minutes:</p><p><a href="${resetUrl}">Reset password</a></p>` }).catch(err => { req.log.error({ err, userId: user.id }, "Password reset email failed"); return { delivered: false as const }; });
+      req.log.info({ userId: user.id, delivered: delivery.delivered }, "Password reset requested");
+    }
+    return {
+      ok: true,
+      message: "If that account exists, password reset instructions have been prepared.",
+      ...(!config.isProd && rawToken ? { resetToken: rawToken } : {}),
+    };
+  });
+
+  app.post("/auth/password/reset", { config: authRateLimit }, async (req, reply) => {
+    const parsed = passwordResetSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "A valid reset token and 10-character password are required" });
+    const now = new Date();
+    const reset = await db.passwordResetToken.findUnique({ where: { tokenHash: tokenHash(parsed.data.token) }, include: { user: true } });
+    if (!reset || reset.usedAt || reset.expiresAt <= now || !reset.user.active) return reply.code(400).send({ error: "This reset link is invalid or has expired" });
+    const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+    await db.$transaction([
+      db.user.update({ where: { id: reset.userId }, data: { passwordHash, passwordChangedAt: now } }),
+      db.passwordResetToken.update({ where: { id: reset.id }, data: { usedAt: now } }),
+      db.passwordResetToken.updateMany({ where: { userId: reset.userId, id: { not: reset.id }, usedAt: null }, data: { usedAt: now } }),
+    ]);
+    return { ok: true };
   });
 
   app.post("/auth/logout", async (_req, reply) => {

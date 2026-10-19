@@ -2,6 +2,8 @@
 
 A multi-tenant WhatsApp customer operations platform for businesses in The Gambia: shared inbox, CRM, leads, bookings, tickets, a knowledge base, and an AI agent that answers customers on WhatsApp from approved knowledge and hands over to staff when needed.
 
+The commercial SaaS layer includes self-service workspaces, password recovery, secure team invitations, Meta template synchronization, CSV contact imports, tagged audiences, scheduled template campaigns, per-recipient delivery analytics, plan quotas and platform-admin plan controls.
+
 It runs fully offline by default. Real WhatsApp delivery and a real AI model are switched on with environment variables.
 
 ## Quick start (local)
@@ -39,6 +41,17 @@ See [docs/META-SETUP.md](docs/META-SETUP.md). In short:
 - Point Meta's webhook at the callback URL shown there and subscribe to `messages`.
 - Set `WHATSAPP_LIVE_ENABLED=true`, then turn on **Settings → AI auto-replies**.
 - Optional: `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` (or `openai` + `OPENAI_API_KEY`).
+- For production signup, set `ALLOW_SIGNUP=true`, `RESEND_API_KEY` and `EMAIL_FROM` so reset and invitation links are delivered securely.
+
+## Campaigns
+
+1. Connect a WhatsApp number and include its WABA ID.
+2. Open **Campaigns** and sync approved templates from Meta.
+3. Import explicitly consented contacts from CSV or add them individually.
+4. Create a campaign for all consented contacts or a tagged segment, preview the plan allowance, then send now or schedule it.
+5. The worker expands the audience into durable recipients, rate-smooths delivery, retries transient Meta failures and records sent, delivered, read, failed and skipped totals.
+
+Free workspaces start with 250 campaign messages per billing period. Platform administrators can change a workspace to STARTER, GROWTH or PRO through the protected platform API.
 
 ## Docs
 

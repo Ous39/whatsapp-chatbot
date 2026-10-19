@@ -31,3 +31,14 @@ The API listens on port 4000. Dashboard routes use the HTTP-only `ob_session` co
 | GET | `/settings/status`, `/health` | Runtime state without secrets |
 
 Tenant routes derive the business ID from the session; callers cannot choose it. Records from other tenants return 404. Invalid input returns 400 with zod details; unexpected errors return a generic 500.
+# Commercial API additions
+
+- `POST /auth/password/forgot`, `POST /auth/password/reset`
+- `POST /customers/import`, `PATCH /customers/:id/preferences`, `GET /segments`
+- `GET /templates`, `POST /templates/sync`
+- `GET|POST /campaigns`, `GET /campaigns/:id/preview`, `POST /campaigns/:id/start`, `POST /campaigns/:id/cancel`
+- `GET /billing/usage`
+- `GET|POST /team/invites`, `GET /team/invites/accept/:token`, `POST /team/invites/accept`
+- `GET /platform/businesses`, `PATCH /platform/businesses/:id/plan` (SUPER_ADMIN only)
+
+Campaigns only target customers with explicit `consent=true` and no opt-out timestamp. The worker re-checks consent immediately before every template send.

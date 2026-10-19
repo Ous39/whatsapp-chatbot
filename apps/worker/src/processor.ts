@@ -237,12 +237,124 @@ async function handleStatus(item: StatusUpdate, log: Logger) {
   const connection = await db.whatsAppConnection.findUnique({ where: { phoneNumberId: item.phoneNumberId }, select: { businessId: true } });
   if (!connection) return;
   const message = await db.message.findUnique({ where: { businessId_externalId: { businessId: connection.businessId, externalId: item.messageId } } });
-  if (!message) return log.info({ messageId: item.messageId }, "Status for unknown message");
+  if (!message) {
+    const recipient = await db.campaignRecipient.findFirst({ where: { businessId: connection.businessId, externalId: item.messageId } });
+    if (!recipient) return log.info({ messageId: item.messageId }, "Status for unknown message");
+    const status = item.status.toUpperCase();
+    const rank: Record<string, number> = { PENDING: 0, QUEUED: 1, SENT: 2, DELIVERED: 3, READ: 4, FAILED: 5 };
+    if (["SENT", "DELIVERED", "READ", "FAILED"].includes(status) && (rank[status] ?? 0) > (rank[recipient.status] ?? 0)) {
+      await db.campaignRecipient.update({ where: { id: recipient.id }, data: { status: status as "SENT" | "DELIVERED" | "READ" | "FAILED", ...(status === "FAILED" ? { error: item.errors?.map(e => e.details ? `${e.title}: ${e.details}` : e.title).filter(Boolean).join("; ").slice(0, 500) || "Meta reported delivery failure" } : {}) } });
+      await refreshCampaignCounters(recipient.campaignId);
+    }
+    return;
+  }
   const next = item.status.toUpperCase();
   if (!shouldApplyStatus(message.status, next)) return;
   const metadata = { ...((message.metadata as object | null) ?? {}), ...(item.errors?.length ? { errors: item.errors } : {}), [`${item.status}At`]: item.timestamp.toISOString() };
   // Conditional update guards against a concurrent status job applying an older state.
   await db.message.updateMany({ where: { id: message.id, status: message.status }, data: { status: next as any, metadata: metadata as any } });
+}
+
+type CampaignEnqueue = (name: "send-campaign-recipient", data: { recipientId: string }, jobId: string, delay?: number) => Promise<unknown>;
+
+async function refreshCampaignCounters(campaignId: string) {
+  const [campaign, grouped] = await Promise.all([
+    db.campaign.findUnique({ where: { id: campaignId }, select: { id: true, status: true } }),
+    db.campaignRecipient.groupBy({ by: ["status"], where: { campaignId }, _count: { _all: true } }),
+  ]);
+  if (!campaign) return;
+  const counts = Object.fromEntries(grouped.map(row => [row.status, row._count._all])) as Record<string, number>;
+  const outstanding = (counts.PENDING ?? 0) + (counts.QUEUED ?? 0);
+  await db.campaign.update({
+    where: { id: campaignId },
+    data: {
+      sentCount: (counts.SENT ?? 0) + (counts.DELIVERED ?? 0) + (counts.READ ?? 0),
+      deliveredCount: (counts.DELIVERED ?? 0) + (counts.READ ?? 0),
+      readCount: counts.READ ?? 0,
+      failedCount: counts.FAILED ?? 0,
+      skippedCount: counts.SKIPPED ?? 0,
+      ...(outstanding === 0 && campaign.status === "RUNNING" ? { status: "COMPLETED", completedAt: new Date() } : {}),
+    },
+  });
+}
+
+/** Expands a consent-aware campaign into durable recipients and queues each send. */
+export async function startCampaign(campaignId: string, enqueue: CampaignEnqueue, log: Logger) {
+  const campaign = await db.campaign.findUnique({ where: { id: campaignId } });
+  if (!campaign || campaign.status === "CANCELLED" || campaign.status === "COMPLETED") return { skipped: true };
+  if (campaign.scheduledAt && campaign.scheduledAt > new Date()) return { early: true };
+  const template = await db.messageTemplate.findFirst({ where: { businessId: campaign.businessId, name: campaign.templateName ?? "", language: campaign.language, status: "APPROVED" } });
+  if (!template) {
+    await db.campaign.update({ where: { id: campaign.id }, data: { status: "FAILED", lastError: "Approved template is no longer available", completedAt: new Date() } });
+    return { failed: "template" };
+  }
+  const customers = await db.customer.findMany({
+    where: { businessId: campaign.businessId, consent: true, optedOutAt: null, ...(campaign.audienceTag ? { tags: { has: campaign.audienceTag } } : {}) },
+    select: { id: true },
+    take: 50_000,
+  });
+  await db.campaignRecipient.createMany({ data: customers.map(customer => ({ businessId: campaign.businessId, campaignId: campaign.id, customerId: customer.id })), skipDuplicates: true });
+  const recipients = await db.campaignRecipient.findMany({ where: { campaignId: campaign.id, status: "PENDING" }, select: { id: true }, take: 50_000 });
+  await db.campaign.update({ where: { id: campaign.id }, data: { status: "RUNNING", startedAt: campaign.startedAt ?? new Date(), totalCount: customers.length, lastError: null } });
+  // A small delay between jobs smooths bursts. BullMQ still retries transient Meta failures.
+  for (let index = 0; index < recipients.length; index += 1) {
+    const recipient = recipients[index];
+    if (!recipient) continue;
+    await db.campaignRecipient.update({ where: { id: recipient.id }, data: { status: "QUEUED" } });
+    await enqueue("send-campaign-recipient", { recipientId: recipient.id }, `campaign-recipient-${recipient.id}`, index * 100);
+  }
+  if (!recipients.length) await refreshCampaignCounters(campaign.id);
+  log.info({ campaignId, recipients: recipients.length }, "Campaign recipients queued");
+  return { recipients: recipients.length };
+}
+
+/** Sends an approved template. Template messages are allowed outside the 24-hour service window. */
+export async function sendCampaignRecipient(recipientId: string, log: Logger) {
+  const recipient = await db.campaignRecipient.findUnique({ where: { id: recipientId }, include: { customer: true, campaign: true } });
+  if (!recipient || !["PENDING", "QUEUED"].includes(recipient.status)) return { skipped: true };
+  if (recipient.campaign.status === "CANCELLED") {
+    await db.campaignRecipient.update({ where: { id: recipient.id }, data: { status: "SKIPPED", error: "Campaign cancelled" } });
+    await refreshCampaignCounters(recipient.campaignId);
+    return { skipped: "cancelled" };
+  }
+  if (!recipient.customer.consent || recipient.customer.optedOutAt) {
+    await db.campaignRecipient.update({ where: { id: recipient.id }, data: { status: "SKIPPED", error: "Customer has not consented or opted out" } });
+    await refreshCampaignCounters(recipient.campaignId);
+    return { skipped: "consent" };
+  }
+  if (!env.live()) {
+    await db.campaignRecipient.update({ where: { id: recipient.id }, data: { status: "FAILED", error: "WHATSAPP_LIVE_ENABLED is false" } });
+    await refreshCampaignCounters(recipient.campaignId);
+    return { failed: "live_disabled" };
+  }
+  const connection = await db.whatsAppConnection.findFirst({ where: { businessId: recipient.businessId, status: "CONNECTED" } });
+  if (!connection) {
+    await db.campaignRecipient.update({ where: { id: recipient.id }, data: { status: "FAILED", error: "No connected WhatsApp number", attempts: { increment: 1 } } });
+    await refreshCampaignCounters(recipient.campaignId);
+    return { failed: "connection" };
+  }
+  try {
+    const graph = { accessToken: await accessTokenFor(connection), phoneNumberId: connection.phoneNumberId, apiVersion: env.graphVersion() };
+    const { messageId } = await sendMessage(graph, { type: "template", to: recipient.customer.phone, name: recipient.campaign.templateName!, language: recipient.campaign.language });
+    await db.campaignRecipient.update({ where: { id: recipient.id }, data: { status: "SENT", externalId: messageId, sentAt: new Date(), attempts: { increment: 1 }, error: null } });
+    await refreshCampaignCounters(recipient.campaignId);
+    return { sent: messageId };
+  } catch (err) {
+    if (err instanceof WhatsAppApiError && err.retryable) {
+      await db.campaignRecipient.update({ where: { id: recipient.id }, data: { attempts: { increment: 1 }, error: err.message.slice(0, 500) } });
+      throw err;
+    }
+    const reason = err instanceof Error ? err.message : "Unknown campaign send error";
+    await db.campaignRecipient.update({ where: { id: recipient.id }, data: { status: "FAILED", attempts: { increment: 1 }, error: reason.slice(0, 500) } });
+    await refreshCampaignCounters(recipient.campaignId);
+    log.warn({ recipientId, reason }, "Campaign message failed");
+    return { failed: reason };
+  }
+}
+
+export async function markCampaignRecipientExhausted(recipientId: string, reason: string) {
+  const row = await db.campaignRecipient.update({ where: { id: recipientId }, data: { status: "FAILED", error: reason.slice(0, 500) } }).catch(() => null);
+  if (row) await refreshCampaignCounters(row.campaignId);
 }
 
 type Logger = { info: (o: object, m: string) => void; warn: (o: object, m: string) => void; error: (o: object, m: string) => void };

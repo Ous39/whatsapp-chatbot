@@ -14,13 +14,19 @@
 - [x] Background worker with retries, exhausted-job handling and a stranded-work recovery sweep
 - [x] CRM: customers, leads, bookings (race-safe conflict checks), tickets, saved replies, audit log, analytics
 - [x] CI: install, migrate, seed, typecheck, test, build and an API smoke test
+- [x] Commercial onboarding: self-service workspace registration, password recovery and secure team invitations
+- [x] Meta template synchronization with approved-template enforcement
+- [x] CSV contact import, consent controls, tags and reusable audience segments
+- [x] Scheduled campaigns with durable per-recipient delivery/read/failure tracking and retries
+- [x] Workspace plans, monthly campaign limits, usage dashboard and super-admin plan controls
 
 ## Next
 
-- [ ] Template messages (sync approved templates, send outside the 24h window, campaigns)
 - [ ] Long-term media storage in S3/MinIO (WhatsApp keeps media for a limited time)
 - [ ] Native-speaker review of Wolof system messages; Mandinka support
-- [ ] Executing automations (after-hours, reminders) and campaign delivery
+- [ ] Executing automations (after-hours and booking reminders)
 - [ ] AI usage budgets per business and cost tracking
 - [ ] Real-time inbox updates (SSE/WebSocket) instead of polling
-- [ ] Password reset, 2FA, and session revocation list
+- [ ] 2FA and session revocation list
+- [ ] Meta Embedded Signup, social/phone authentication and paid-plan checkout
+- [ ] Instagram/Facebook inbox, catalog, forms and commerce integrations

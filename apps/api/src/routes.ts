@@ -328,14 +328,6 @@ export async function registerRoutes(app: FastifyInstance) {
     return row;
   });
 
-  app.get("/campaigns", { preHandler: requirePermission("business:*") }, async req => db.campaign.findMany({ where: { businessId: tenantId(req) }, orderBy: { updatedAt: "desc" } }));
-
-  app.post("/campaigns", { preHandler: requirePermission("business:*") }, async (req, reply) => {
-    const parsed = z.object({ name: z.string().trim().min(1).max(120), templateName: z.string().trim().max(512).regex(/^[a-z0-9_]*$/, "Template names use lowercase letters, numbers and underscores").optional().or(z.literal("")) }).safeParse(req.body);
-    if (!parsed.success) return bad(reply, "Campaign name is required", parsed.error.flatten());
-    return reply.code(201).send(await db.campaign.create({ data: { businessId: tenantId(req), name: parsed.data.name, templateName: parsed.data.templateName || null, audience: { consent: true, optedOut: false }, status: "DRAFT" } }));
-  });
-
   app.get("/saved-replies", { preHandler: requirePermission("conversation:read") }, async req => db.savedReply.findMany({ where: { businessId: tenantId(req) }, orderBy: { title: "asc" } }));
 
   app.post("/saved-replies", { preHandler: requirePermission("conversation:*") }, async (req, reply) => {

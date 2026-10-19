@@ -10,6 +10,7 @@ import { registerRoutes } from "./routes.js";
 import { registerWebhook } from "./webhook.js";
 import { registerWhatsAppRoutes } from "./whatsapp-routes.js";
 import { registerVoiceRoutes } from "./voice-routes.js";
+import { registerCommercialRoutes } from "./commercial-routes.js";
 
 export async function buildApp() {
   const app = Fastify({
@@ -45,6 +46,7 @@ export async function buildApp() {
   await registerWebhook(app);
   await registerWhatsAppRoutes(app);
   await registerVoiceRoutes(app);
+  await registerCommercialRoutes(app);
 
   app.setNotFoundHandler((_req, reply) => reply.code(404).send({ error: "Not found" }));
   app.setErrorHandler((error, req, reply) => {
