@@ -25,25 +25,25 @@ export default function Integrations(){
   {!state?.liveEnabled&&<div className="notice"><strong>Live sending is switched off on the server.</strong> You can save and test the connection now; replies are only delivered once an administrator sets <code>WHATSAPP_LIVE_ENABLED=true</code>.</div>}
   {error&&<p className="error">{error}</p>}{notice&&<p className="pill" style={{display:"inline-block"}}>{notice}</p>}
   {embedded?.enabled&&<div className="card" style={{marginBottom:18}}><h2>Fast connection</h2><p className="muted">Sign in with Meta, choose your business and WhatsApp number, and OceanBrown will configure the connection securely.</p><button className="btn" disabled={busy} onClick={connectEmbedded}>Connect with Facebook</button></div>}
-  <div className="split">
-   <form className="card form-grid" onSubmit={save}>
-    <h2 style={{gridColumn:"1/-1"}}>WhatsApp Cloud API</h2>
+  <div className="integration-layout">
+   <form className="card integration-form" onSubmit={save}>
+    <h2 className="integration-span">WhatsApp Cloud API</h2>
     <label>Phone number ID<input className="input" required inputMode="numeric" value={form.phoneNumberId} onChange={e=>setForm({...form,phoneNumberId:e.target.value})} placeholder="e.g. 106540352242922"/></label>
     <label>WhatsApp Business Account ID<input className="input" inputMode="numeric" value={form.wabaId} onChange={e=>setForm({...form,wabaId:e.target.value})}/></label>
     <label>Display phone (optional)<input className="input" value={form.displayPhone} onChange={e=>setForm({...form,displayPhone:e.target.value})} placeholder="+220 …"/></label>
     <label>Permanent access token<input className="input" type="password" autoComplete="off" value={form.accessToken} onChange={e=>setForm({...form,accessToken:e.target.value})} placeholder={c?.hasAccessToken?"Saved — leave blank to keep":"System-user token from Meta Business Settings"}/></label>
-    <div style={{gridColumn:"1/-1",display:"flex",gap:8,flexWrap:"wrap"}}>
+    <div className="actions integration-span">
      <button className="btn" disabled={busy}>Save</button>
      {c&&<button type="button" className="btn secondary" disabled={busy} onClick={test}>Test connection</button>}
      {c&&<button type="button" className="btn secondary" disabled={busy} onClick={remove}>Disconnect</button>}
     </div>
-    <p style={{gridColumn:"1/-1",fontSize:12,color:"var(--muted)"}}>Tokens are encrypted with AES-256-GCM before they are stored and are never shown again.</p>
+    <p className="small muted integration-span integration-help">Tokens are encrypted with AES-256-GCM before they are stored and are never shown again.</p>
    </form>
-   <div className="card">
+   <div className="card integration-status">
     <h2>Status</h2>
     <div className="row"><span className={c?.status==="CONNECTED"?"pill":"pill gray"}>{c?.status??"NOT CONNECTED"}</span><div className="grow"><strong>{c?.verifiedName??c?.displayPhone??"No number saved"}</strong><p>{c?.lastError??(c?.lastWebhookAt?`Last webhook ${new Date(c.lastWebhookAt).toLocaleString()}`:"No webhook received yet")}</p></div></div>
     <h2 style={{marginTop:18}}>Webhook setup in Meta</h2>
-    <div className="row"><div className="grow"><strong>Callback URL</strong><p style={{wordBreak:"break-all"}}><code>{state?.webhookUrl??"…"}</code></p></div><button className="btn secondary" type="button" onClick={()=>state&&navigator.clipboard.writeText(state.webhookUrl)}>Copy</button></div>
+    <div className="row integration-webhook"><div className="grow"><strong>Callback URL</strong><p><code>{state?.webhookUrl??"…"}</code></p></div><button className="btn secondary" type="button" onClick={()=>state&&navigator.clipboard.writeText(state.webhookUrl)}>Copy</button></div>
     <div className="row"><div className="grow"><strong>Verify token</strong><p>Use the value of <code>META_VERIFY_TOKEN</code> from the server environment. Subscribe to the <code>messages</code> field.</p></div></div>
     <h2 style={{marginTop:18}}>Server checklist</h2>
     <Check ok={!!state?.server.appSecret} label="META_APP_SECRET" hint="Verifies that webhooks really come from Meta."/>
