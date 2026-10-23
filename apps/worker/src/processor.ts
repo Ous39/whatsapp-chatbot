@@ -189,7 +189,8 @@ async function handleInbound(item: InboundMessage, enqueue: Enqueue, log: Logger
   if (customer.optedOutAt) return;
 
   const business = await db.business.findUniqueOrThrow({ where: { id: businessId } });
-  if (!business.automationEnabled || conversation.mode !== "AI") return;
+  // Suspended workspaces keep receiving (nothing is lost) but no automatic replies are sent.
+  if (business.planStatus !== "ACTIVE" || !business.automationEnabled || conversation.mode !== "AI") return;
 
   if (isNewCustomer && business.welcomeMessage) {
     const w = await createOutbound(businessId, conversation.id, business.welcomeMessage, `welcome-${customer.id}`, "system");
@@ -395,7 +396,7 @@ export async function processWebhookEvent(eventId: string, enqueue: Enqueue, log
 
 /** Sends one queued outbound message (text or voice note) through the Cloud API, enforcing Meta's rules at send time. */
 export async function sendQueuedMessage(messageId: string, log: Logger, enqueue?: Enqueue) {
-  const message = await db.message.findUnique({ where: { id: messageId }, include: { conversation: { include: { customer: true } } } });
+  const message = await db.message.findUnique({ where: { id: messageId }, include: { conversation: { include: { customer: true, business: { select: { planStatus: true } } } } } });
   if (!message || message.direction !== "OUTBOUND" || message.status !== "QUEUED") return { skipped: true };
   const meta = (message.metadata as Record<string, unknown> | null) ?? {};
   // A voice note can carry a follow-up text message that must go out after it, whatever happens to the audio.
@@ -416,6 +417,8 @@ export async function sendQueuedMessage(messageId: string, log: Logger, enqueue?
     return { simulated: true };
   }
   const customer = message.conversation.customer;
+  const planStatus = (message.conversation as { business?: { planStatus: string } | null }).business?.planStatus;
+  if (planStatus && planStatus !== "ACTIVE" && !meta.optOutConfirmation) return fail("Workspace suspended");
   if (customer.optedOutAt && !meta.optOutConfirmation) return fail("Customer opted out");
   if (!isWithinServiceWindow(customer.lastInboundAt)) return fail("Outside the 24-hour customer service window; an approved template is required");
   const connection = await db.whatsAppConnection.findFirst({ where: { businessId: message.businessId, ...VERIFIED_CONNECTION } });

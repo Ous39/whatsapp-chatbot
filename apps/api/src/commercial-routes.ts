@@ -162,19 +162,7 @@ export async function registerCommercialRoutes(app: FastifyInstance) {
     return db.business.update({ where: { id: tenantId(req) }, data: { onboardingCompletedAt: body.completed ? new Date() : null }, select: { onboardingCompletedAt: true } });
   });
 
-  // Platform administration remains inaccessible to tenant owners.
-  app.get("/platform/businesses", { preHandler: requireAuth }, async (req, reply) => {
-    if (req.user.role !== "SUPER_ADMIN") return reply.code(403).send({ error: "Platform administrator access required" });
-    return db.business.findMany({ select: { id: true, name: true, slug: true, plan: true, planStatus: true, monthlyMessageLimit: true, createdAt: true, _count: { select: { users: true, customers: true, campaigns: true } } }, orderBy: { createdAt: "desc" } });
-  });
-
-  app.patch("/platform/businesses/:id/plan", { preHandler: requireAuth }, async (req, reply) => {
-    if (req.user.role !== "SUPER_ADMIN") return reply.code(403).send({ error: "Platform administrator access required" });
-    const parsed = z.object({ plan: z.enum(["FREE", "STARTER", "GROWTH", "PRO"]), status: z.enum(["ACTIVE", "PAST_DUE", "SUSPENDED", "CANCELLED"]).default("ACTIVE"), monthlyMessageLimit: z.number().int().positive().max(10_000_000).optional() }).safeParse(req.body);
-    if (!parsed.success) return bad(reply, "Invalid plan configuration");
-    const limit = parsed.data.monthlyMessageLimit ?? PLAN_LIMITS[parsed.data.plan];
-    return db.business.update({ where: { id: idParam(req) }, data: { plan: parsed.data.plan, planStatus: parsed.data.status, monthlyMessageLimit: limit, currentPeriodStart: new Date() } });
-  });
+  // Platform administration lives in platform-routes.ts (provider admin, audited).
 
   // ---------- Secure team invitations ----------
   app.get("/team/invites", { preHandler: requirePermission("team:*") }, async req =>

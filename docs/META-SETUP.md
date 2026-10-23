@@ -71,4 +71,19 @@ META_EMBEDDED_SIGNUP_CONFIG_ID=your_configuration_id
 ENCRYPTION_KEY=64_hex_characters
 ```
 
-The browser receives only the public App ID and Configuration ID. The API exchanges the one-time authorization code server-side, encrypts the resulting access token, verifies the selected phone number and never returns the token to the dashboard. Manual system-user token setup remains available as an administrator fallback.
+The browser receives only the public App ID and Configuration ID. The API exchanges the one-time authorization code server-side (it expires after about 30 seconds), encrypts the resulting access token, verifies that the selected phone number belongs to the returned WhatsApp Business Account, subscribes the app to that account's webhooks and registers the number with a random 6-digit PIN (stored encrypted). Numbers connected through the WhatsApp Business app (coexistence, event `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`) are not re-registered. The token is never returned to the dashboard.
+
+Requirements on Meta's side (OceanBrown, once):
+
+- OceanBrown's Meta app must be an approved **Tech Provider** (App Review for `whatsapp_business_management` and `whatsapp_business_messaging`, plus Meta business verification). Until then only accounts with a role on the app can complete the flow.
+- Create the configuration with **Embedded Signup v4** (earlier versions are deprecated) and the WhatsApp Cloud API product. Add the dashboard's domain to *Allowed domains* for the Facebook Login for Business configuration.
+- Until OceanBrown's business is verified, Meta limits how many new customer businesses can be onboarded per rolling 7 days (10 at the time of writing).
+
+Requirements on the customer's side (shown in the app as next steps, never asked of them in advance):
+
+- A Facebook account; Meta lets them create or pick a business portfolio inside the window.
+- A number that can receive an SMS or call, and is not on WhatsApp (or connect the WhatsApp Business app via coexistence).
+- A payment method on their WhatsApp Business Account in WhatsApp Manager when Meta asks for it (Meta bills message charges to it).
+- Display-name approval and, for higher limits, business verification happen at Meta; the app shows their status from the phone number's `name_status` and `code_verification_status`.
+
+Fallback: OceanBrown staff can connect a number for a customer from **Provider admin → customer → Assisted setup**. Customers cannot reach that form, and a saved connection stays unverified until “Test connection” confirms the number belongs to the account. See `docs/ONBOARDING.md`.

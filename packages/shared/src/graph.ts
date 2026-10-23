@@ -83,10 +83,39 @@ export async function markAsRead(cfg: GraphConfig, messageId: string): Promise<v
   });
 }
 
-/** Verifies a token + phone number id pair and returns the number's public details. */
-export async function getPhoneNumberInfo(cfg: GraphConfig): Promise<{ displayPhone?: string; verifiedName?: string; qualityRating?: string }> {
-  const json = await call(cfg, `${encodeURIComponent(cfg.phoneNumberId)}?fields=display_phone_number,verified_name,quality_rating`, { method: "GET" });
-  return { displayPhone: json.display_phone_number, verifiedName: json.verified_name, qualityRating: json.quality_rating };
+export type PhoneNumberInfo = {
+  displayPhone?: string;
+  verifiedName?: string;
+  qualityRating?: string;
+  /** VERIFIED | NOT_VERIFIED */
+  codeVerificationStatus?: string;
+  /** APPROVED | DECLINED | EXPIRED | PENDING_REVIEW | NONE */
+  nameStatus?: string;
+  /** CLOUD_API once registered for messaging */
+  platformType?: string;
+};
+
+/** Verifies a token + phone number id pair and returns the number's public details and review states. */
+export async function getPhoneNumberInfo(cfg: GraphConfig): Promise<PhoneNumberInfo> {
+  const json = await call(cfg, `${encodeURIComponent(cfg.phoneNumberId)}?fields=display_phone_number,verified_name,quality_rating,code_verification_status,name_status,platform_type`, { method: "GET" });
+  return {
+    displayPhone: json.display_phone_number,
+    verifiedName: json.verified_name,
+    qualityRating: json.quality_rating,
+    codeVerificationStatus: json.code_verification_status,
+    nameStatus: json.name_status,
+    platformType: json.platform_type,
+  };
+}
+
+/**
+ * Registers a number for Cloud API messaging (required after Embedded Signup, within 14 days).
+ * The 6-digit PIN becomes the number's two-step verification PIN; OceanBrown stores it encrypted.
+ */
+export async function registerPhoneNumber(cfg: GraphConfig, pin: string): Promise<void> {
+  if (!/^\d{6}$/.test(pin)) throw new WhatsAppApiError("Registration PIN must be 6 digits", 0, undefined, false);
+  const json = await call(cfg, `${encodeURIComponent(cfg.phoneNumberId)}/register`, { method: "POST", body: { messaging_product: "whatsapp", pin } });
+  if (json?.success === false) throw new WhatsAppApiError("Meta did not confirm the registration", 200, undefined, false);
 }
 
 export type WhatsAppTemplate = {

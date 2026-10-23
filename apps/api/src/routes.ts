@@ -60,6 +60,11 @@ export async function registerRoutes(app: FastifyInstance) {
     if (!parsed.success) return bad(reply, "Invalid business details", parsed.error.flatten());
     const data = Object.fromEntries(Object.entries(parsed.data).filter(([, v]) => v !== undefined).map(([k, v]) => [k, v === "" ? null : v]));
     if (!Object.keys(data).length) return bad(reply, "No supported fields supplied");
+    // AI replies only answer from published knowledge; switching them on with nothing published would
+    // answer every customer with "I don't know". Sensitive industries also need a reviewed answer first.
+    if (data.automationEnabled === true && !(await db.knowledgeSource.count({ where: { businessId: tenantId(req), status: "PUBLISHED" } }))) {
+      return reply.code(422).send({ error: "Publish at least one reviewed answer in Knowledge before switching on AI replies." });
+    }
     const row = await db.business.update({ where: { id: tenantId(req) }, data: data as any });
     await audit("business.update", "Business", row.id, req, { fields: Object.keys(data) });
     return row;
@@ -390,7 +395,8 @@ export async function registerRoutes(app: FastifyInstance) {
     return {
       ai: { provider: ai.provider, model: ai.provider === "simulator" ? null : ai.model ?? "default", live: ai.provider !== "simulator", label: ai.provider === "simulator" ? "LOCAL SIMULATOR — keyword retrieval only" : `${ai.provider} (grounded in published knowledge)` },
       whatsapp: { ...(connection ?? { status: "DISCONNECTED", webhookHealthy: false }), liveEnabled: config.whatsapp.liveEnabled },
-      requirements: { metaAppSecret: !!config.whatsapp.appSecret, metaVerifyToken: !!config.whatsapp.verifyToken, encryptionKey: !!config.encryptionKey },
+      // Server configuration is visible to OceanBrown staff only.
+      ...(req.user.role === "SUPER_ADMIN" ? { requirements: { metaAppSecret: !!config.whatsapp.appSecret, metaVerifyToken: !!config.whatsapp.verifyToken, encryptionKey: !!config.encryptionKey } } : {}),
       voice: voiceStatus(process.env),
     };
   });

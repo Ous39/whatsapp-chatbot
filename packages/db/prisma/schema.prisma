@@ -120,6 +120,9 @@ model Business {
   currentPeriodEnd      DateTime?
   onboardingCompletedAt DateTime?
   templateAppliedAt     DateTime?
+  /// Answers given in onboarding step 2 (opening hours, location, …). Used to fill industry templates.
+  businessFacts         Json?
+  suspendedReason       String?
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
   users                 User[]
@@ -137,6 +140,7 @@ model Business {
   whatsappConnections   WhatsAppConnection[]
   auditLogs             AuditLog[]
   templateInstallations TemplateInstallation[]
+  supportRequests       SupportRequest[]
 }
 
 model User {
@@ -305,6 +309,10 @@ model KnowledgeSource {
   sourceType String          @default("TEXT")
   sourceUrl  String?
   error      String?
+  /// Set for answers installed from an industry template: the template FAQ key and the hash of the
+  /// installed text, so later template updates never overwrite an answer the business has edited.
+  templateKey  String?
+  templateHash String?
   updatedAt  DateTime        @updatedAt
   createdAt  DateTime        @default(now())
 
@@ -327,6 +335,13 @@ model WhatsAppConnection {
   /// Set only after Meta confirms, with this workspace's own token, that the number belongs to its WABA.
   /// Webhooks are routed and messages sent only for connections that are CONNECTED and verified.
   ownershipVerifiedAt  DateTime?
+  /// Last review states read from Meta (number verification, display name, registration).
+  metaStatus           Json?
+  lastCheckedAt        DateTime?
+  /// EMBEDDED (customer signed up with Facebook) or ASSISTED (OceanBrown staff connected it).
+  onboardingMethod     String?
+  /// Two-step verification PIN set when OceanBrown registered the number; encrypted, never shown to customers.
+  encryptedRegistrationPin String?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
@@ -496,7 +511,41 @@ model TemplateInstallation {
   industry   String
   version    Int      @default(1)
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
 
   @@unique([businessId, industry])
   @@index([businessId])
+}
+
+/// Master industry templates managed by OceanBrown staff. Each edit is a new immutable version;
+/// businesses keep their own copies and review updates before applying them.
+model IndustryTemplate {
+  id          String   @id @default(cuid())
+  key         String
+  version     Int
+  definition  Json
+  notes       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@unique([key, version])
+}
+
+/// "Ask OceanBrown for help" requests from customers (assisted WhatsApp setup and other support).
+model SupportRequest {
+  id           String    @id @default(cuid())
+  businessId   String
+  business     Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdById  String?
+  topic        String
+  message      String
+  contactPhone String?
+  status       String    @default("OPEN")
+  staffNote    String?
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([businessId, status])
+  @@index([status, createdAt])
 }

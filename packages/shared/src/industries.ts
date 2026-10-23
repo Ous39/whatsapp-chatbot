@@ -1,290 +1,395 @@
-export type IndustryKey = "RETAIL" | "RESTAURANT" | "HOSPITALITY" | "HEALTHCARE" | "EDUCATION" | "FINANCE" | "TELECOM" | "REAL_ESTATE" | "LOGISTICS" | "PROFESSIONAL" | "RECRUITMENT" | "MEDIA" | "GOVERNMENT" | "NONPROFIT" | "OTHER";
+// Industry starter templates.
+//
+// A template never states a fact about a business that the owner did not give us. FAQ text uses
+// {{placeholders}} filled from the owner's answers in onboarding step 2. An FAQ is published only when
+// every placeholder it uses was answered AND the industry is not sensitive; everything else is installed
+// as a DRAFT for the owner to complete. Sensitive industries (health, finance, government) never
+// auto-publish and never switch AI replies on, so official information is always reviewed by a person.
+//
+// These definitions are the version-1 defaults. Platform administrators can publish newer versions
+// from the provider admin area (stored in the IndustryTemplate table); each business keeps its own copy.
+
+export type IndustryKey =
+  | "RETAIL" | "RESTAURANT" | "HOSPITALITY" | "HEALTHCARE" | "EDUCATION" | "FINANCE" | "TELECOM" | "REAL_ESTATE"
+  | "LOGISTICS" | "PROFESSIONAL" | "RECRUITMENT" | "MEDIA" | "GOVERNMENT" | "NONPROFIT" | "OTHER";
+
+export type TemplateField = { key: string; label: string; placeholder?: string; help?: string; required?: boolean; multiline?: boolean };
+export type TemplateFaq = { key: string; title: string; content: string };
 
 export interface IndustryTemplate {
   key: IndustryKey;
   label: string;
   description: string;
+  version: number;
+  /** Sensitive industries: nothing is published automatically and AI replies stay off until reviewed. */
+  sensitive: boolean;
+  /** Shown to the owner on the review screen. */
+  notes?: string;
   welcomeMessage: string;
-  faqs: Array<{ title: string; content: string }>;
-  automationEnabled: boolean;
-  defaultLanguage: string;
+  fallbackMessage: string;
+  handoverMessage: string;
+  afterHoursMessage: string;
+  /** Topics customers can ask about; shown in the welcome message and as preview suggestions. */
+  menuOptions: string[];
+  /** What the owner is asked in step 2. Only these values ever reach published answers. */
+  fields: TemplateField[];
+  faqs: TemplateFaq[];
+  languages: string[];
 }
 
+// ---------- Common questions asked in step 2 ----------
+const F = {
+  hours: { key: "openingHours", label: "Opening hours", placeholder: "Mon–Sat 9:00–18:00, closed Sunday" },
+  location: { key: "location", label: "Address or area", placeholder: "Kairaba Avenue, Serrekunda" },
+  phone: { key: "contactPhone", label: "Phone number for calls", placeholder: "+220 …" },
+  website: { key: "website", label: "Website or social page", placeholder: "https://…" },
+  payment: { key: "paymentMethods", label: "Ways customers can pay", placeholder: "Cash, Wave, Afrimoney, bank transfer" },
+  services: { key: "services", label: "Main products or services", placeholder: "List what you offer", multiline: true },
+} satisfies Record<string, TemplateField>;
+
+const req = (field: TemplateField): TemplateField => ({ ...field, required: true });
+
+const HANDOVER = "Thanks for your patience. A member of our team will reply here shortly.";
+const FALLBACK = "I don't have that information yet. Could you rephrase, or reply \"agent\" to talk to a member of our team?";
+const AFTER_HOURS = "Thanks for your message. We're closed right now ({{openingHours}}). We'll reply as soon as we open.";
+const AFTER_HOURS_GENERIC = "Thanks for your message. Our team is away right now and will reply as soon as we're back.";
+
+const base = (t: Omit<IndustryTemplate, "version" | "languages" | "fallbackMessage" | "handoverMessage" | "afterHoursMessage"> & Partial<IndustryTemplate>): IndustryTemplate => ({
+  version: 1,
+  languages: ["en"],
+  fallbackMessage: FALLBACK,
+  handoverMessage: HANDOVER,
+  // Only mention opening hours when the template actually asks for them.
+  afterHoursMessage: t.fields.some(f => f.key === "openingHours") ? AFTER_HOURS : AFTER_HOURS_GENERIC,
+  ...t,
+});
+
 export const INDUSTRIES: Record<IndustryKey, IndustryTemplate> = {
-  RETAIL: {
-    key: "RETAIL",
-    label: "Retail & E-commerce",
-    description: "Physical stores, online shops, and merchandise businesses",
-    welcomeMessage: "Welcome to our store! 👋 I can help you with product questions, orders, and delivery information. How can I assist you today?",
-    automationEnabled: true,
-    defaultLanguage: "en",
+  RETAIL: base({
+    key: "RETAIL", label: "Retail and e-commerce", description: "Shops, online stores and product sellers", sensitive: false,
+    welcomeMessage: "Welcome to {{businessName}}! Ask about products, prices, delivery or your order. Reply \"agent\" any time to talk to our team.",
+    menuOptions: ["Product enquiries", "Opening hours", "Order status", "Delivery", "Talk to our team"],
+    fields: [req(F.services), req(F.hours), req(F.location), F.payment, { key: "deliveryInfo", label: "Delivery areas and fees", placeholder: "Greater Banjul, D100 within Kanifing" }, { key: "orderStatusInfo", label: "How customers check an order", placeholder: "Send your order number and we'll check it" }],
     faqs: [
-      { title: "What are your business hours?", content: "We're open Monday to Saturday, 9 AM to 6 PM. Sundays closed." },
-      { title: "Do you offer delivery?", content: "Yes! We deliver to most areas within the city. Delivery typically takes 1-3 business days." },
-      { title: "What's your return policy?", content: "We accept returns within 14 days of purchase, with original packaging and receipt." },
-      { title: "How can I track my order?", content: "Once your order ships, we'll send you a tracking link via WhatsApp." },
-      { title: "What payment methods do you accept?", content: "We accept cash, mobile money, cards, and bank transfers." },
-      { title: "Are there discounts for bulk orders?", content: "Yes! Orders of 10+ items qualify for special bulk pricing." },
-      { title: "How do I contact customer support?", content: "Reply to any message in this chat and a team member will help you." },
-      { title: "Do you sell gift cards?", content: "Yes, we offer digital gift cards in any amount. Perfect for gifts!" },
+      { key: "products", title: "What do you sell?", content: "We offer: {{services}}." },
+      { key: "hours", title: "What are your opening hours?", content: "Our opening hours are {{openingHours}}." },
+      { key: "location", title: "Where are you located?", content: "You can find us at {{location}}." },
+      { key: "payment", title: "How can I pay?", content: "You can pay by {{paymentMethods}}." },
+      { key: "delivery", title: "Do you deliver?", content: "Delivery: {{deliveryInfo}}." },
+      { key: "order-status", title: "How do I check my order?", content: "{{orderStatusInfo}}." },
     ],
-  },
-  RESTAURANT: {
-    key: "RESTAURANT",
-    label: "Restaurants & Food Services",
-    description: "Cafés, restaurants, catering, and food delivery",
-    welcomeMessage: "Welcome to our restaurant! 🍽️ Browse our menu, place orders, or make a reservation. What can we serve you?",
-    automationEnabled: true,
-    defaultLanguage: "en",
+  }),
+  RESTAURANT: base({
+    key: "RESTAURANT", label: "Restaurants and food services", description: "Restaurants, cafés, takeaways and caterers", sensitive: false,
+    welcomeMessage: "Welcome to {{businessName}}! Ask about our menu, opening hours, reservations or directions. Reply \"agent\" to talk to our team.",
+    menuOptions: ["Menu", "Opening hours", "Reservations", "Location and directions", "Talk to our team"],
+    fields: [req(F.hours), req(F.location), { key: "menuInfo", label: "Menu link or what you serve", placeholder: "https://… or 'Gambian and continental dishes'", required: true }, { key: "bookingInfo", label: "How to reserve a table", placeholder: "Send the date, time and number of guests" }, { key: "directions", label: "Directions or landmarks", placeholder: "Opposite the Total station" }, F.payment],
     faqs: [
-      { title: "What are your opening hours?", content: "Lunch: 11 AM - 3 PM | Dinner: 5 PM - 11 PM | Closed on Mondays." },
-      { title: "Do you have a vegetarian menu?", content: "Yes! We offer a full vegetarian section." },
-      { title: "Can I make a reservation?", content: "Absolutely! Tell us your preferred date, time, and party size." },
-      { title: "Do you offer delivery or takeout?", content: "We offer both! Orders are ready for pickup in 30-45 minutes." },
-      { title: "What's your payment policy?", content: "We accept cash, cards, and mobile money." },
-      { title: "Do you accommodate allergies?", content: "Yes, very important to us. Please list all allergies when ordering." },
-      { title: "Can I place a large catering order?", content: "Definitely! For groups of 10+, please contact us directly." },
-      { title: "How long does delivery take?", content: "Typical delivery: 30-60 minutes depending on location." },
+      { key: "menu", title: "What is on the menu?", content: "Our menu: {{menuInfo}}." },
+      { key: "hours", title: "When are you open?", content: "We are open {{openingHours}}." },
+      { key: "reservations", title: "Can I book a table?", content: "{{bookingInfo}}. A member of our team will confirm your booking." },
+      { key: "location", title: "Where are you?", content: "We are at {{location}}." },
+      { key: "directions", title: "How do I find you?", content: "{{directions}}." },
+      { key: "payment", title: "How can I pay?", content: "You can pay by {{paymentMethods}}." },
     ],
-  },
-  HOSPITALITY: {
-    key: "HOSPITALITY",
-    label: "Hotels & Hospitality",
-    description: "Hotels, resorts, guesthouses, and accommodations",
-    welcomeMessage: "Welcome! 🏨 Need a room, have questions about our facilities, or want to make a reservation?",
-    automationEnabled: true,
-    defaultLanguage: "en",
+  }),
+  HOSPITALITY: base({
+    key: "HOSPITALITY", label: "Hotels and hospitality", description: "Hotels, lodges, guesthouses and tour operators", sensitive: false,
+    welcomeMessage: "Welcome to {{businessName}}! Ask about rooms, rates, availability or directions. Reply \"agent\" to talk to reception.",
+    menuOptions: ["Rooms and rates", "Book a stay", "Facilities", "Location", "Talk to reception"],
+    fields: [req(F.location), { key: "rooms", label: "Room types and rates", placeholder: "Standard D3,500 per night, Deluxe D5,000", multiline: true, required: true }, { key: "facilities", label: "Facilities", placeholder: "Pool, Wi-Fi, breakfast, airport pickup" }, { key: "checkTimes", label: "Check-in and check-out times", placeholder: "Check-in 14:00, check-out 11:00" }, { key: "bookingInfo", label: "How to book", placeholder: "Send your dates and number of guests" }, F.payment],
     faqs: [
-      { title: "How do I make a reservation?", content: "Tell us your check-in date, nights, room type, and any special requests." },
-      { title: "What amenities do you offer?", content: "We offer WiFi, free breakfast, 24-hour reception, parking, gym, restaurant, and room service." },
-      { title: "What's your cancellation policy?", content: "Cancellations must be made 48 hours before check-in for a full refund." },
-      { title: "Do you offer airport transfers?", content: "Yes! Arrange a transfer when booking. Additional charge applies." },
-      { title: "Is there WiFi and how good is it?", content: "High-speed WiFi throughout the property." },
-      { title: "What time are check-in and check-out?", content: "Check-in: 3 PM | Check-out: 11 AM." },
-      { title: "Do you allow pets?", content: "Selected rooms are pet-friendly with additional cleaning fees." },
-      { title: "Is parking available?", content: "Complimentary parking for guests in our secure lot." },
+      { key: "rooms", title: "What rooms do you have and what do they cost?", content: "Our rooms: {{rooms}}. Availability is confirmed by our team." },
+      { key: "booking", title: "How do I book?", content: "{{bookingInfo}}. Reception will confirm availability." },
+      { key: "facilities", title: "What facilities do you have?", content: "Facilities: {{facilities}}." },
+      { key: "check-times", title: "What are check-in and check-out times?", content: "{{checkTimes}}." },
+      { key: "location", title: "Where are you located?", content: "We are at {{location}}." },
     ],
-  },
-  HEALTHCARE: {
-    key: "HEALTHCARE",
-    label: "Healthcare & Clinics",
-    description: "Hospitals, clinics, dental, and health services",
-    welcomeMessage: "Welcome to our clinic! 👨‍⚕️ We can help schedule appointments, answer health questions, or assist with follow-ups.",
-    automationEnabled: true,
-    defaultLanguage: "en",
+  }),
+  HEALTHCARE: base({
+    key: "HEALTHCARE", label: "Healthcare and clinics", description: "Clinics, pharmacies and health services", sensitive: true,
+    notes: "Health information must be reviewed by authorised staff. The assistant only shares opening hours, location and how to book; it never gives medical advice.",
+    welcomeMessage: "Welcome to {{businessName}}. We can help with opening hours, location and appointments. For emergencies, call the emergency services or go to the nearest hospital. Reply \"agent\" to talk to our staff.",
+    menuOptions: ["Opening hours", "Book an appointment", "Location", "Talk to our staff"],
+    fields: [req(F.hours), req(F.location), F.phone, { key: "appointmentInfo", label: "How to book an appointment", placeholder: "Send your name and preferred day" }],
     faqs: [
-      { title: "How do I book an appointment?", content: "Tell us the service you need and your preferred date/time." },
-      { title: "What are your clinic hours?", content: "Monday-Friday: 8 AM - 6 PM | Saturday: 9 AM - 1 PM | Closed Sundays." },
-      { title: "What insurance do you accept?", content: "We work with major health insurance providers." },
-      { title: "What should I bring to my appointment?", content: "Please bring ID, insurance card, and any relevant medical records." },
-      { title: "Do you offer prescription delivery?", content: "Yes! We can deliver prescriptions to your home." },
-      { title: "How much do appointments cost?", content: "First consultation: 500-2000 GMD depending on service." },
-      { title: "Do you offer telemedicine?", content: "Yes, video consultations available for follow-ups and minor concerns." },
-      { title: "What emergency services are available?", content: "Emergency services available 24/7." },
+      { key: "hours", title: "What are your opening hours?", content: "We are open {{openingHours}}." },
+      { key: "location", title: "Where are you located?", content: "We are at {{location}}." },
+      { key: "appointments", title: "How do I book an appointment?", content: "{{appointmentInfo}}. Our staff will confirm the time." },
+      { key: "contact", title: "Can I call you?", content: "Yes, call us on {{contactPhone}}." },
     ],
-  },
-  EDUCATION: {
-    key: "EDUCATION",
-    label: "Education & Training",
-    description: "Schools, universities, tutoring, and educational services",
-    welcomeMessage: "Welcome to our institution! 🎓 I can help with admissions, coursework, schedules, and more.",
-    automationEnabled: true,
-    defaultLanguage: "en",
+  }),
+  EDUCATION: base({
+    key: "EDUCATION", label: "Education and training", description: "Schools, training centres and tutors", sensitive: false,
+    welcomeMessage: "Welcome to {{businessName}}! Ask about courses, fees, admissions or term dates. Reply \"agent\" to talk to our office.",
+    menuOptions: ["Courses", "Fees", "Admissions", "Term dates", "Talk to our office"],
+    fields: [{ key: "courses", label: "Courses or classes offered", multiline: true, required: true }, { key: "fees", label: "Fees", placeholder: "D2,500 per term" }, { key: "admissions", label: "How to apply or enrol" }, { key: "termDates", label: "Term or intake dates" }, req(F.location), F.hours],
     faqs: [
-      { title: "How do I enroll or apply?", content: "Share your education level and interests. We'll send you the application form." },
-      { title: "What programs do you offer?", content: "We offer programs in Sciences, Humanities, Professional Skills, and more." },
-      { title: "When do classes start?", content: "New intakes: January and September. Summer programs available." },
-      { title: "How much are tuition fees?", content: "Fees vary by program. Share your program interest for fee schedules." },
-      { title: "Do you offer scholarships?", content: "Yes, scholarship opportunities available based on merit and need." },
-      { title: "What's the student-to-teacher ratio?", content: "Average class size: 15-25 students." },
-      { title: "Can I get academic support?", content: "Yes! Tutoring, study groups, and counseling available." },
-      { title: "How do I check my grades?", content: "Log into the student portal or ask us to send your latest report." },
+      { key: "courses", title: "What courses do you offer?", content: "We offer: {{courses}}." },
+      { key: "fees", title: "How much are the fees?", content: "Fees: {{fees}}." },
+      { key: "admissions", title: "How do I apply?", content: "{{admissions}}." },
+      { key: "terms", title: "When does the next term or intake start?", content: "{{termDates}}." },
+      { key: "location", title: "Where are you?", content: "We are at {{location}}." },
     ],
-  },
-  FINANCE: {
-    key: "FINANCE",
-    label: "Financial Services",
-    description: "Banks, insurance, lending, and financial advisors",
-    welcomeMessage: "Welcome! 💰 I can help with account services, loans, insurance, and financial questions.",
-    automationEnabled: false,
-    defaultLanguage: "en",
+  }),
+  FINANCE: base({
+    key: "FINANCE", label: "Financial services", description: "Banks, microfinance, insurance and money transfer", sensitive: true,
+    notes: "Financial information must be approved by authorised staff before it is published. The assistant must never ask customers for PINs, passwords or full card numbers.",
+    welcomeMessage: "Welcome to {{businessName}}. We will never ask for your PIN or password on WhatsApp. Ask about our services, branches or opening hours, or reply \"agent\" to talk to our team.",
+    menuOptions: ["Services", "Branches and hours", "Talk to our team"],
+    fields: [req(F.services), req(F.hours), { key: "branches", label: "Branches", multiline: true }, F.phone],
     faqs: [
-      { title: "How do I open an account?", content: "You can apply online or visit a branch with ID and proof of address." },
-      { title: "What documents do I need?", content: "Typical requirements: National ID, proof of address, employment letter." },
-      { title: "What are your interest rates?", content: "Rates vary by product and market conditions. Chat with our advisors." },
-      { title: "Do you offer online banking?", content: "Yes, full online and mobile banking with secure login." },
-      { title: "How do I apply for a loan?", content: "Share your loan amount and purpose. We'll verify eligibility." },
-      { title: "What insurance products do you offer?", content: "Life, health, property, auto, and travel insurance." },
-      { title: "How secure is online banking?", content: "We use bank-grade encryption and 24/7 fraud monitoring." },
-      { title: "What are your fees?", content: "Transparent fee schedules available for each service." },
+      { key: "services", title: "What services do you offer?", content: "Our services: {{services}}." },
+      { key: "hours", title: "What are your opening hours?", content: "We are open {{openingHours}}." },
+      { key: "branches", title: "Where are your branches?", content: "Our branches: {{branches}}." },
+      { key: "security", title: "Will you ask for my PIN?", content: "No. We will never ask for your PIN, password or full card number on WhatsApp. If someone does, do not share it and call us on {{contactPhone}}." },
     ],
-  },
-  TELECOM: {
-    key: "TELECOM",
-    label: "Telecommunications",
-    description: "Mobile operators, internet providers, and telecom services",
-    welcomeMessage: "Welcome! 📱 I can help with plans, billing, technical support, and account services.",
-    automationEnabled: true,
-    defaultLanguage: "en",
+  }),
+  TELECOM: base({
+    key: "TELECOM", label: "Telecommunications", description: "Mobile operators, internet providers and resellers", sensitive: false,
+    welcomeMessage: "Welcome to {{businessName}} support! Ask about bundles, coverage, SIM services or our shops. Reply \"agent\" to talk to customer care.",
+    menuOptions: ["Bundles", "SIM and registration", "Shops", "Talk to customer care"],
+    fields: [{ key: "bundles", label: "Main bundles and how to buy them", multiline: true, required: true }, { key: "simInfo", label: "SIM registration or replacement requirements" }, { key: "shops", label: "Shop locations", multiline: true }, F.hours, { key: "careNumber", label: "Customer care short code or number" }],
     faqs: [
-      { title: "What plans do you offer?", content: "We offer voice, SMS, data, and combo plans for all budgets." },
-      { title: "How do I activate a plan?", content: "Easy! Share your phone number and plan preference. We'll activate within minutes." },
-      { title: "How do I check my balance?", content: "Text BALANCE or dial *100# to check airtime." },
-      { title: "Can I top up online?", content: "Yes! Use the app, web portal, or ask us here." },
-      { title: "What's your customer service coverage?", content: "Support available 24/7 via WhatsApp, phone, and online chat." },
-      { title: "Do you have roaming plans?", content: "Yes, affordable roaming to 150+ countries." },
-      { title: "How do I settle my bill?", content: "Pay online, via app, bank transfer, or mobile money." },
-      { title: "Is there a contract lock-in?", content: "No long-term contracts. Cancel anytime." },
+      { key: "bundles", title: "What bundles do you have?", content: "{{bundles}}." },
+      { key: "sim", title: "How do I register or replace a SIM?", content: "{{simInfo}}." },
+      { key: "shops", title: "Where are your shops?", content: "Our shops: {{shops}}. Opening hours: {{openingHours}}." },
+      { key: "care", title: "How do I contact customer care?", content: "Call {{careNumber}}, or reply \"agent\" here." },
     ],
-  },
-  REAL_ESTATE: {
-    key: "REAL_ESTATE",
-    label: "Real Estate",
-    description: "Property sales, rentals, and real estate services",
-    welcomeMessage: "Welcome to our agency! 🏠 Looking for a home? I can help with listings, viewings, financing, and more!",
-    automationEnabled: true,
-    defaultLanguage: "en",
+  }),
+  REAL_ESTATE: base({
+    key: "REAL_ESTATE", label: "Real estate", description: "Agents, developers and property managers", sensitive: false,
+    welcomeMessage: "Welcome to {{businessName}}! Tell us whether you want to rent, buy or sell, and your preferred area. Reply \"agent\" to talk to our team.",
+    menuOptions: ["Rent", "Buy", "Sell or list a property", "Book a viewing", "Talk to an agent"],
+    fields: [{ key: "listingsLink", label: "Where customers see listings", placeholder: "https://… or 'ask us for current listings'" }, { key: "areas", label: "Areas you cover", required: true }, { key: "viewingInfo", label: "How to book a viewing" }, F.hours, F.location],
     faqs: [
-      { title: "What properties do you have?", content: "Apartments, houses, commercial spaces, and land." },
-      { title: "How do I schedule a viewing?", content: "Send your preferred dates and times. We'll arrange a viewing." },
-      { title: "What's included in property costs?", content: "Prices shown are for the property. Closing costs discussed separately." },
-      { title: "Do you help with financing?", content: "Yes! We connect you with partner banks for mortgages and loans." },
-      { title: "What neighborhoods do you serve?", content: "We operate across the city and suburbs." },
-      { title: "How do I rent a property?", content: "Browse listings, shortlist properties, sign lease, pay deposit." },
-      { title: "What's the selling process?", content: "We list, market, show, and negotiate. We handle legal documents." },
-      { title: "Are there any hidden costs?", content: "Full transparency. We explain all costs upfront." },
+      { key: "areas", title: "Which areas do you cover?", content: "We cover {{areas}}." },
+      { key: "listings", title: "Where can I see available properties?", content: "{{listingsLink}}." },
+      { key: "viewing", title: "How do I book a viewing?", content: "{{viewingInfo}}. An agent will confirm." },
+      { key: "office", title: "Where is your office?", content: "Our office is at {{location}}, open {{openingHours}}." },
     ],
-  },
-  LOGISTICS: {
-    key: "LOGISTICS",
-    label: "Logistics & Transportation",
-    description: "Delivery services, freight, and transportation",
-    welcomeMessage: "Welcome! 🚚 I can help track shipments, arrange pickups, and get shipping quotes.",
-    automationEnabled: true,
-    defaultLanguage: "en",
+  }),
+  LOGISTICS: base({
+    key: "LOGISTICS", label: "Transportation and logistics", description: "Delivery, courier, shipping and transport", sensitive: false,
+    welcomeMessage: "Welcome to {{businessName}}! Ask for a quote, track a delivery or check our routes. Reply \"agent\" to talk to our team.",
+    menuOptions: ["Get a quote", "Track a delivery", "Routes", "Talk to our team"],
+    fields: [{ key: "routes", label: "Routes or areas served", required: true }, { key: "quoteInfo", label: "What customers send for a quote", placeholder: "Pickup, drop-off, size and weight" }, { key: "trackingInfo", label: "How customers track a delivery" }, F.hours, F.payment],
     faqs: [
-      { title: "How do I ship a package?", content: "Provide sender/receiver addresses, package weight, and dimensions." },
-      { title: "How do I track my shipment?", content: "You'll receive a tracking number. Share it for real-time updates." },
-      { title: "What are your shipping rates?", content: "Rates depend on distance, weight, and speed." },
-      { title: "Do you offer insurance?", content: "Optional insurance available for valuable items." },
-      { title: "What's your delivery time?", content: "Standard: 2-5 days. Express: next day. Same-day in the city." },
-      { title: "Can you handle fragile items?", content: "Yes! We have specialized packaging and handling." },
-      { title: "Do you offer bulk shipping discounts?", content: "Yes! Regular shippers get special rates." },
-      { title: "What if my package is damaged?", content: "Report within 24 hours with photos. Insured packages covered." },
+      { key: "routes", title: "Where do you deliver?", content: "We serve {{routes}}." },
+      { key: "quote", title: "How do I get a quote?", content: "Send us: {{quoteInfo}}. Our team will reply with a price." },
+      { key: "tracking", title: "How do I track my delivery?", content: "{{trackingInfo}}." },
+      { key: "payment", title: "How can I pay?", content: "You can pay by {{paymentMethods}}." },
     ],
-  },
-  PROFESSIONAL: {
-    key: "PROFESSIONAL",
-    label: "Professional Services",
-    description: "Consulting, agencies, and professional firms",
-    welcomeMessage: "Welcome! 👔 I can help schedule consultations, discuss your project, and answer service questions.",
-    automationEnabled: true,
-    defaultLanguage: "en",
+  }),
+  PROFESSIONAL: base({
+    key: "PROFESSIONAL", label: "Professional services", description: "Consultants, accountants, lawyers, agencies and IT services", sensitive: false,
+    welcomeMessage: "Welcome to {{businessName}}! Tell us what you need help with, or ask about our services and how to book a consultation. Reply \"agent\" to talk to our team.",
+    menuOptions: ["Services", "Book a consultation", "Office hours", "Talk to our team"],
+    fields: [req(F.services), { key: "consultationInfo", label: "How to book a consultation" }, F.hours, F.location, F.website],
     faqs: [
-      { title: "What services do you offer?", content: "Strategy, marketing, design, tech, HR, and more." },
-      { title: "How do I start a project?", content: "Schedule a free consultation. We'll propose a scope and fee." },
-      { title: "What's your typical project fee?", content: "Hourly rates ($50-300/hr), project-based, or retainers." },
-      { title: "How long does a project take?", content: "Small: 2-4 weeks. Large: 3-12 months." },
-      { title: "Can you work with my budget?", content: "Yes! Share your budget and we'll scope work accordingly." },
-      { title: "Do you offer ongoing support?", content: "Yes, retainer packages available for ongoing support." },
-      { title: "How do we communicate?", content: "WhatsApp, email, calls, and video meetings." },
-      { title: "What's your process?", content: "Discovery → Proposal → Kick-off → Execution → Delivery → Support." },
+      { key: "services", title: "What services do you offer?", content: "Our services: {{services}}." },
+      { key: "consultation", title: "How do I book a consultation?", content: "{{consultationInfo}}." },
+      { key: "hours", title: "What are your office hours?", content: "We are open {{openingHours}}." },
+      { key: "website", title: "Where can I learn more?", content: "Visit {{website}}." },
     ],
-  },
-  RECRUITMENT: {
-    key: "RECRUITMENT",
-    label: "Recruitment & Jobs",
-    description: "Job boards, recruitment agencies, and HR services",
-    welcomeMessage: "Welcome! 💼 Looking for a job or talent? I can help with applications, inquiries, and career guidance.",
-    automationEnabled: true,
-    defaultLanguage: "en",
+  }),
+  RECRUITMENT: base({
+    key: "RECRUITMENT", label: "Recruitment and jobs", description: "Job boards, recruiters and HR services", sensitive: false,
+    welcomeMessage: "Welcome to {{businessName}}! Ask about current vacancies, job categories or how to apply. We only share vacancies from our official listings. Reply \"agent\" to talk to our team.",
+    menuOptions: ["Job categories", "Current vacancies", "How to apply", "Closing dates", "Talk to our team"],
+    fields: [{ key: "vacanciesLink", label: "Official vacancies link", placeholder: "https://…", required: true }, { key: "jobCategories", label: "Job categories", placeholder: "Banking, NGO, IT, sales" }, { key: "applyInfo", label: "How candidates apply", required: true }, { key: "closingDatesInfo", label: "Where closing dates are shown", placeholder: "Each vacancy shows its closing date" }],
     faqs: [
-      { title: "How do I apply for a job?", content: "Send your CV and a message about why you're interested." },
-      { title: "What jobs are you hiring for?", content: "Tech, sales, marketing, operations, and more." },
-      { title: "What's the salary range?", content: "Salaries vary by role and experience." },
-      { title: "What benefits do you offer?", content: "Health insurance, 401k/pension, paid leave, professional development." },
-      { title: "What's the hiring timeline?", content: "Typically 2-4 weeks from application to offer." },
-      { title: "Do you offer internships?", content: "Yes! Internship programs in most departments." },
-      { title: "I'm a recruiter. Can you help source talent?", content: "Definitely! Share your requirements and we'll find candidates." },
-      { title: "What questions should I prepare for interviews?", content: "We'll send typical questions and tips beforehand." },
+      { key: "vacancies", title: "Where can I see current vacancies?", content: "All current vacancies are listed at {{vacanciesLink}}." },
+      { key: "categories", title: "What kinds of jobs do you post?", content: "We post jobs in: {{jobCategories}}." },
+      { key: "apply", title: "How do I apply?", content: "{{applyInfo}}." },
+      { key: "closing", title: "When do applications close?", content: "{{closingDatesInfo}}. Always check the official listing at {{vacanciesLink}}." },
+      { key: "fees", title: "Do I have to pay to apply?", content: "Applying through our official listings is described at {{vacanciesLink}}. Never send money to anyone promising a job on WhatsApp." },
     ],
-  },
-  MEDIA: {
-    key: "MEDIA",
-    label: "News & Media",
-    description: "News organizations, publications, and media companies",
-    welcomeMessage: "Welcome! 📰 Stay updated with our latest stories. Subscribe, get alerts, or reach out with news tips!",
-    automationEnabled: true,
-    defaultLanguage: "en",
+  }),
+  MEDIA: base({
+    key: "MEDIA", label: "News and media", description: "News outlets, radio, TV and publishers", sensitive: false,
+    notes: "News updates are sent only to people who opted in, using approved templates. Corrections and unsubscribing must always be easy.",
+    welcomeMessage: "Welcome to {{businessName}}! Reply with a topic to get links to our latest stories. Reply STOP at any time to unsubscribe, or \"agent\" to talk to our newsroom.",
+    menuOptions: ["Latest stories", "News topics", "Subscribe to updates", "Report a correction", "Unsubscribe"],
+    fields: [{ key: "website", label: "Website for articles", placeholder: "https://…", required: true }, { key: "newsTopics", label: "News topics", placeholder: "Politics, business, sport" }, { key: "correctionsContact", label: "How readers report corrections", required: true }],
     faqs: [
-      { title: "How do I subscribe?", content: "Subscribe to get daily news, breaking alerts, and exclusive stories." },
-      { title: "How much is a subscription?", content: "Free: Headlines | Basic: $3/month | Premium: $8/month." },
-      { title: "How do I share news tips?", content: "Send photos, videos, or story info. We'll verify and may publish." },
-      { title: "Can I republish your content?", content: "Attribution required for sharing." },
-      { title: "How often do you publish?", content: "Daily: breaking news | Weekly: in-depth investigations." },
-      { title: "Do you have a mobile app?", content: "Yes! Available on iOS and Android." },
-      { title: "How do I advertise with you?", content: "We offer display ads, classifieds, and sponsored content." },
-      { title: "How do I contact your newsroom?", content: "Reply here or email press@company.com for serious investigations." },
+      { key: "latest", title: "Where can I read the latest news?", content: "Read our latest stories at {{website}}." },
+      { key: "topics", title: "What topics do you cover?", content: "We cover: {{newsTopics}}." },
+      { key: "subscribe", title: "How do I get news updates on WhatsApp?", content: "Reply \"subscribe\" and our team will add you to updates. You can reply STOP at any time to unsubscribe." },
+      { key: "corrections", title: "How do I report a mistake in a story?", content: "{{correctionsContact}}." },
+      { key: "unsubscribe", title: "How do I stop updates?", content: "Reply STOP at any time and you will not receive further updates." },
     ],
-  },
-  GOVERNMENT: {
-    key: "GOVERNMENT",
-    label: "Government & Public Services",
-    description: "Government departments, agencies, and public services",
-    welcomeMessage: "Welcome to our public service! 🏛️ I can help with inquiries, document requests, and service information.",
-    automationEnabled: false,
-    defaultLanguage: "en",
+  }),
+  GOVERNMENT: base({
+    key: "GOVERNMENT", label: "Government and public services", description: "Ministries, agencies and public information offices", sensitive: true,
+    notes: "Official information must be approved by an authorised officer before it is published. Every answer should point to an official source, and unanswered questions go to the right department.",
+    welcomeMessage: "Welcome to the official {{businessName}} WhatsApp service. Ask about our services or announcements. Answers link to official sources. Reply \"agent\" to reach the right department.",
+    menuOptions: ["Services", "Official announcements", "Office hours and locations", "Contact a department"],
+    fields: [{ key: "officialWebsite", label: "Official website", placeholder: "https://….gov.gm", required: true }, { key: "announcementsLink", label: "Official announcements page" }, { key: "departments", label: "Departments and what they handle", multiline: true }, F.hours, F.location],
     faqs: [
-      { title: "How do I apply for a service?", content: "Visit our office or submit applications online with required documents." },
-      { title: "What documents do I need?", content: "National ID, proof of residence, and specific forms required." },
-      { title: "What are office hours?", content: "Monday-Friday: 8 AM - 4 PM. Closed weekends and public holidays." },
-      { title: "Is there a fee for services?", content: "Some services are free. Others have government-set fees." },
-      { title: "Can I check my application status?", content: "Yes! Share your reference number for updates." },
-      { title: "Do you offer appointments?", content: "Yes, book appointments to reduce wait times." },
-      { title: "What if I need to appeal a decision?", content: "Appeals process available with clear steps and timelines." },
-      { title: "How do I file a complaint?", content: "Submit a formal complaint with details. We investigate and respond within 30 days." },
+      { key: "services", title: "What services do you provide?", content: "Information about our services is on our official website: {{officialWebsite}}." },
+      { key: "announcements", title: "Where can I see official announcements?", content: "Official announcements are published at {{announcementsLink}}." },
+      { key: "departments", title: "Which department handles my request?", content: "{{departments}}. Reply \"agent\" and we will forward your message to the right department." },
+      { key: "hours", title: "When and where can I visit?", content: "Our office is at {{location}}, open {{openingHours}}." },
     ],
-  },
-  NONPROFIT: {
-    key: "NONPROFIT",
-    label: "Non-Profit Organizations",
-    description: "NGOs, charities, and social enterprises",
-    welcomeMessage: "Welcome! ❤️ I can help with volunteering, donations, events, and our mission.",
-    automationEnabled: true,
-    defaultLanguage: "en",
+  }),
+  NONPROFIT: base({
+    key: "NONPROFIT", label: "Non-profit organisations", description: "NGOs, charities and community groups", sensitive: false,
+    welcomeMessage: "Welcome to {{businessName}}! Ask about our programmes, volunteering or how to get support. Reply \"agent\" to talk to our team.",
+    menuOptions: ["Our programmes", "Get support", "Volunteer", "Donate", "Talk to our team"],
+    fields: [{ key: "programmes", label: "Programmes", multiline: true, required: true }, { key: "supportInfo", label: "How people get support" }, { key: "volunteerInfo", label: "How to volunteer" }, { key: "donateInfo", label: "How to donate (official channels only)" }, F.website],
     faqs: [
-      { title: "How can I volunteer?", content: "We'd love to have you! Share your skills and availability." },
-      { title: "How do I donate?", content: "One-time or monthly donations welcome! Options: online, bank transfer, mobile money." },
-      { title: "Is my donation tax-deductible?", content: "Yes! We're a registered non-profit. You'll receive a tax receipt." },
-      { title: "What's your impact?", content: "This year we've helped 500+ families with education, food, and healthcare." },
-      { title: "Can my company partner with you?", content: "Absolutely! Corporate partnerships, sponsorship, and volunteering welcome." },
-      { title: "Do you have upcoming events?", content: "Monthly fundraisers, awareness events, and community days." },
-      { title: "How's my donation used?", content: "75% on programs, 15% on operations, 10% on fundraising." },
-      { title: "Can I designate my donation?", content: "Yes! Donate for specific programs: education, health, emergency aid." },
+      { key: "programmes", title: "What do you do?", content: "Our programmes: {{programmes}}." },
+      { key: "support", title: "How can I get support?", content: "{{supportInfo}}." },
+      { key: "volunteer", title: "How can I volunteer?", content: "{{volunteerInfo}}." },
+      { key: "donate", title: "How can I donate?", content: "{{donateInfo}}. Only use our official channels listed at {{website}}." },
     ],
-  },
-  OTHER: {
-    key: "OTHER",
-    label: "Other",
-    description: "Businesses not listed above",
-    welcomeMessage: "Welcome! 👋 How can we help you today?",
-    automationEnabled: true,
-    defaultLanguage: "en",
+  }),
+  OTHER: base({
+    key: "OTHER", label: "Other", description: "Any other business", sensitive: false,
+    welcomeMessage: "Welcome to {{businessName}}! How can we help you today? Reply \"agent\" any time to talk to our team.",
+    menuOptions: ["Our services", "Opening hours", "Location", "Talk to our team"],
+    fields: [req(F.services), F.hours, F.location, F.phone, F.website],
     faqs: [
-      { title: "What services do you offer?", content: "Please tell us what you're looking for and we'll help!" },
-      { title: "How can I contact you?", content: "You can reach us here via WhatsApp. We respond during business hours." },
-      { title: "What are your hours?", content: "Please ask about our business hours and we'll provide details." },
-      { title: "Do you have a website?", content: "Yes, visit our website for more information." },
-      { title: "How can I stay updated?", content: "Follow our social media or subscribe to our newsletter." },
-      { title: "Do you offer customer support?", content: "Yes! Reply here with any questions and we'll assist." },
-      { title: "Can you help me with...", content: "Feel free to ask! We'll do our best to help or point you in the right direction." },
-      { title: "What makes you different?", content: "We pride ourselves on customer service and quality." },
+      { key: "services", title: "What do you offer?", content: "We offer: {{services}}." },
+      { key: "hours", title: "What are your opening hours?", content: "We are open {{openingHours}}." },
+      { key: "location", title: "Where are you located?", content: "We are at {{location}}." },
+      { key: "contact", title: "How can I contact you?", content: "Call us on {{contactPhone}} or message us here." },
+      { key: "website", title: "Do you have a website?", content: "Yes: {{website}}." },
     ],
-  },
+  }),
 };
+
+export const INDUSTRY_KEYS = Object.keys(INDUSTRIES) as IndustryKey[];
+export const isIndustryKey = (value: unknown): value is IndustryKey => typeof value === "string" && value in INDUSTRIES;
 
 export const INDUSTRY_OPTIONS = Object.values(INDUSTRIES).map(industry => ({
   value: industry.key,
   label: industry.label,
   description: industry.description,
+  sensitive: industry.sensitive,
 }));
+
+// ---------- Provisioning (pure; used by the API and tested in isolation) ----------
+
+const PLACEHOLDER = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+
+/** Small stable hash (FNV-1a) so we can tell whether a customer edited a provisioned answer. */
+export function contentHash(value: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < value.length; i += 1) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
+export type Facts = Record<string, string | undefined | null>;
+
+/** Fills {{placeholders}}. Missing values become a visible "[Add …]" marker and are reported. */
+export function fillTemplate(text: string, facts: Facts, fields: TemplateField[] = []): { text: string; missing: string[] } {
+  const missing: string[] = [];
+  const out = text.replace(PLACEHOLDER, (_m, key: string) => {
+    const value = String(facts[key] ?? "").trim();
+    if (value) return value.replace(/[.\s]+$/, "");
+    missing.push(key);
+    const label = fields.find(f => f.key === key)?.label ?? key;
+    return `[Add ${label.toLowerCase()}]`;
+  });
+  return { text: out.replace(/\.\./g, ".").trim(), missing: [...new Set(missing)] };
+}
+
+export type PlannedFaq = { key: string; title: string; content: string; status: "PUBLISHED" | "DRAFT"; missing: string[]; hash: string };
+export type ProvisioningPlan = {
+  industry: IndustryKey;
+  version: number;
+  welcomeMessage: string;
+  handoverMessage: string;
+  afterHoursMessage: string;
+  faqs: PlannedFaq[];
+  /** AI replies may only be offered once something is published; sensitive industries never auto-enable. */
+  aiCanBeEnabled: boolean;
+  missingRequired: string[];
+};
+
+export function planProvisioning(template: IndustryTemplate, facts: Facts, businessName: string): ProvisioningPlan {
+  const allFacts = { ...facts, businessName };
+  const faqs = template.faqs.map(faq => {
+    const { text, missing } = fillTemplate(faq.content, allFacts, template.fields);
+    const status: PlannedFaq["status"] = !template.sensitive && missing.length === 0 ? "PUBLISHED" : "DRAFT";
+    return { key: faq.key, title: faq.title, content: text, status, missing, hash: contentHash(`${faq.title}\n${text}`) };
+  });
+  const welcome = fillTemplate(template.welcomeMessage, allFacts).text;
+  const afterHours = fillTemplate(template.afterHoursMessage, allFacts).missing.length ? "" : fillTemplate(template.afterHoursMessage, allFacts).text;
+  return {
+    industry: template.key,
+    version: template.version,
+    welcomeMessage: welcome,
+    handoverMessage: template.handoverMessage,
+    afterHoursMessage: afterHours,
+    faqs,
+    aiCanBeEnabled: !template.sensitive && faqs.some(f => f.status === "PUBLISHED"),
+    missingRequired: template.fields.filter(f => f.required && !String(facts[f.key] ?? "").trim()).map(f => f.key),
+  };
+}
+
+export type InstalledFaq = { id: string; templateKey: string | null; templateHash: string | null; title: string; content: string };
+export type TemplateUpdatePlan = {
+  fromVersion: number;
+  toVersion: number;
+  /** FAQs in the new version the customer does not have. Added as drafts if accepted. */
+  additions: PlannedFaq[];
+  /** FAQs the customer never edited; safe to replace with the new wording if accepted. */
+  replacements: (PlannedFaq & { id: string })[];
+  /** FAQs the customer customised; never touched. */
+  keptCustomised: { id: string; key: string; title: string }[];
+};
+
+/** Compares a newer master version with a customer's installed copy. Never overwrites customisations. */
+export function planTemplateUpdate(template: IndustryTemplate, installedVersion: number, installed: InstalledFaq[], facts: Facts, businessName: string): TemplateUpdatePlan {
+  const next = planProvisioning(template, facts, businessName).faqs;
+  const byKey = new Map(installed.filter(i => i.templateKey).map(i => [i.templateKey!, i]));
+  const plan: TemplateUpdatePlan = { fromVersion: installedVersion, toVersion: template.version, additions: [], replacements: [], keptCustomised: [] };
+  if (template.version <= installedVersion) return plan;
+  for (const faq of next) {
+    const current = byKey.get(faq.key);
+    if (!current) {
+      plan.additions.push({ ...faq, status: "DRAFT" });
+      continue;
+    }
+    const untouched = current.templateHash === contentHash(`${current.title}\n${current.content}`);
+    if (!untouched) plan.keptCustomised.push({ id: current.id, key: faq.key, title: current.title });
+    else if (current.templateHash !== faq.hash) plan.replacements.push({ ...faq, id: current.id });
+  }
+  return plan;
+}
+
+// ---------- Validation of admin-edited template definitions ----------
+
+export function validateTemplateDefinition(value: unknown): { ok: true; template: IndustryTemplate } | { ok: false; errors: string[] } {
+  const errors: string[] = [];
+  const t = value as IndustryTemplate;
+  if (!t || typeof t !== "object") return { ok: false, errors: ["Template must be an object"] };
+  if (!isIndustryKey(t.key)) errors.push("key must be one of the supported industries");
+  for (const k of ["label", "description", "welcomeMessage", "fallbackMessage", "handoverMessage", "afterHoursMessage"] as const) {
+    if (typeof t[k] !== "string" || !t[k].trim()) errors.push(`${k} is required`);
+    else if (t[k].length > 2000) errors.push(`${k} is too long`);
+  }
+  if (typeof t.sensitive !== "boolean") errors.push("sensitive must be true or false");
+  if (!Array.isArray(t.menuOptions) || t.menuOptions.some(o => typeof o !== "string")) errors.push("menuOptions must be a list of text");
+  if (!Array.isArray(t.fields) || t.fields.some(f => !f || typeof f.key !== "string" || typeof f.label !== "string" || !/^[a-zA-Z0-9_]+$/.test(f.key))) errors.push("fields must have a key (letters/numbers) and a label");
+  if (!Array.isArray(t.faqs) || !t.faqs.length) errors.push("faqs must contain at least one question");
+  else {
+    const keys = new Set<string>();
+    for (const f of t.faqs) {
+      if (!f || typeof f.key !== "string" || typeof f.title !== "string" || typeof f.content !== "string" || !f.title.trim() || !f.content.trim()) errors.push("each FAQ needs key, title and content");
+      else if (keys.has(f.key)) errors.push(`duplicate FAQ key ${f.key}`);
+      else keys.add(f.key);
+    }
+  }
+  const fieldKeys = new Set([...(Array.isArray(t.fields) ? t.fields.map(f => f.key) : []), "businessName"]);
+  const texts = [t.welcomeMessage, t.afterHoursMessage, ...(Array.isArray(t.faqs) ? t.faqs.map(f => f.content) : [])].filter((s): s is string => typeof s === "string");
+  for (const text of texts) for (const m of text.matchAll(PLACEHOLDER)) if (!fieldKeys.has(m[1]!)) errors.push(`placeholder {{${m[1]}}} has no matching field`);
+  if (errors.length) return { ok: false, errors: [...new Set(errors)] };
+  return { ok: true, template: { ...t, languages: Array.isArray(t.languages) && t.languages.length ? t.languages : ["en"], version: Number(t.version) || 1 } };
+}

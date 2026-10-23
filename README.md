@@ -20,6 +20,10 @@ Requirements: Node.js 22+, Docker Desktop, and pnpm (`corepack enable`). The API
 
 Validate with `pnpm typecheck`, `pnpm test` and `pnpm build`. The same steps run in GitHub Actions on every push (`.github/workflows/ci.yml`).
 
+## Customer onboarding
+
+New businesses sign up with four fields and are guided through three steps at `/onboarding`: connect WhatsApp with Meta's own window (no tokens or IDs), pick an industry starter that is filled only with facts the owner types, then review and test before switching on AI replies. Status turns *Live* only after Meta has delivered a real message. OceanBrown staff manage customers, help requests, failed connection attempts and industry templates in **Provider admin** (`/platform`). Details, test results and the deployment checklist: [`docs/ONBOARDING.md`](docs/ONBOARDING.md).
+
 ## How a WhatsApp message flows
 
 1. Meta calls `POST /webhooks/meta`. The API verifies the `X-Hub-Signature-256` HMAC over the raw body, stores the delivery once (idempotent on its hash) and acknowledges immediately.

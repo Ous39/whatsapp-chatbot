@@ -6,7 +6,7 @@ import { can, loginSchema, passwordResetRequestSchema, passwordResetSchema, regi
 import { config } from "./config.js";
 import { sendTransactionalEmail } from "./email.js";
 import { provisionIndustryTemplate } from "./templates.js";
-import { INDUSTRIES, type IndustryKey } from "@oceanbrown/shared";
+import { isIndustryKey } from "@oceanbrown/shared";
 
 declare module "@fastify/jwt" {
   interface FastifyJWT {
@@ -14,6 +14,15 @@ declare module "@fastify/jwt" {
     user: SessionUser;
   }
 }
+
+declare module "fastify" {
+  interface FastifyRequest {
+    /** Plan status of the user's workspace (ACTIVE, PAST_DUE, SUSPENDED, CANCELLED), loaded with the session. */
+    workspaceStatus?: string | null;
+  }
+}
+
+const BLOCKED_WORKSPACE = new Set(["SUSPENDED", "CANCELLED"]);
 
 export class HttpError extends Error {
   constructor(readonly statusCode: number, message: string) {
@@ -40,12 +49,13 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
   } catch {
     return reply.code(401).send({ error: "Authentication required" });
   }
-  const user = sub ? await db.user.findUnique({ where: { id: sub }, select: { id: true, businessId: true, role: true, email: true, name: true, active: true, passwordChangedAt: true } }) : null;
+  const user = sub ? await db.user.findUnique({ where: { id: sub }, select: { id: true, businessId: true, role: true, email: true, name: true, active: true, passwordChangedAt: true, business: { select: { planStatus: true } } } }) : null;
   if (!user?.active || (user.passwordChangedAt && issuedAt * 1000 < user.passwordChangedAt.getTime())) {
     reply.clearCookie(COOKIE, { path: "/" });
     return reply.code(401).send({ error: "Authentication required" });
   }
   req.user = { id: user.id, businessId: user.businessId, role: user.role as Role, email: user.email, name: user.name };
+  req.workspaceStatus = user.business?.planStatus ?? null;
 }
 
 export function requirePermission(permission: string) {
@@ -53,7 +63,26 @@ export function requirePermission(permission: string) {
     await requireAuth(req, reply);
     if (reply.sent) return;
     if (!can(req.user.role, permission)) return reply.code(403).send({ error: "Permission denied" });
+    // A suspended workspace can still sign in and read its data, but cannot act until OceanBrown reactivates it.
+    if (req.user.role !== "SUPER_ADMIN" && req.workspaceStatus && BLOCKED_WORKSPACE.has(req.workspaceStatus)) {
+      return reply.code(403).send({ error: "This workspace is suspended. Contact OceanBrown support to reactivate it." });
+    }
   };
+}
+
+/** OceanBrown staff only. Every action through this guard is audited against the business it touches. */
+export async function requirePlatformAdmin(req: FastifyRequest, reply: FastifyReply) {
+  await requireAuth(req, reply);
+  if (reply.sent) return;
+  if (req.user.role !== "SUPER_ADMIN") return reply.code(403).send({ error: "Platform administrator access required" });
+}
+
+export async function platformAudit(req: FastifyRequest, action: string, businessId: string | null, entityType: string, entityId?: string, metadata?: Record<string, unknown>) {
+  try {
+    await db.auditLog.create({ data: { businessId, actorId: req.user.id, action, entityType, entityId, metadata: { ...(metadata ?? {}), platform: true, actorEmail: req.user.email } as any } });
+  } catch (err) {
+    req.log.error({ err, action }, "Failed to write platform audit log");
+  }
 }
 
 export function tenantId(req: FastifyRequest) {
@@ -88,26 +117,21 @@ export async function registerAuth(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: "Name, email, business name and a 10-character password are required", details: parsed.error.flatten() });
     const body = parsed.data;
     if (await db.user.findUnique({ where: { email: body.email }, select: { id: true } })) return reply.code(409).send({ error: "Email is already registered" });
-    
-    // Validate and default industry
-    let industryKey: IndustryKey = (body.industry as IndustryKey) || "OTHER";
-    if (!INDUSTRIES[industryKey]) {
-      industryKey = "OTHER";
-    }
+    // Industry is chosen in onboarding step 2; an industry sent at signup (older clients) is still honoured.
+    const industryKey = isIndustryKey(body.industry) ? body.industry : null;
     const base = body.businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 45) || "business";
     const slug = `${base}-${crypto.randomUUID().slice(0, 8)}`;
     const passwordHash = await bcrypt.hash(body.password, 12);
     try {
       const user = await db.$transaction(async tx => {
-        const business = await tx.business.create({ data: { name: body.businessName, slug, industry: industryKey, timezone: "Africa/Banjul" } });
+        const business = await tx.business.create({ data: { name: body.businessName, slug, industry: industryKey ?? "", timezone: "Africa/Banjul" } });
         return tx.user.create({ data: { businessId: business.id, email: body.email, name: body.name, passwordHash, role: "OWNER" } });
       });
-      
-      // Provision template asynchronously (non-blocking)
-      provisionIndustryTemplate(user.businessId!, industryKey).catch(err => {
-        req.log.error({ err, businessId: user.businessId, industry: industryKey }, "Template provisioning failed");
-      });
-      return reply.code(201).send({ user: await startSession(reply, user) });
+      if (industryKey) {
+        await provisionIndustryTemplate(user.businessId!, industryKey).catch(err => req.log.error({ err, businessId: user.businessId }, "Template provisioning failed"));
+      }
+      await db.auditLog.create({ data: { businessId: user.businessId, actorId: user.id, action: "onboarding.account_created", entityType: "Business", entityId: user.businessId ?? undefined } }).catch(() => undefined);
+      return reply.code(201).send({ user: await startSession(reply, user), next: "/onboarding" });
     } catch (err: any) {
       if (err?.code === "P2002") return reply.code(409).send({ error: "Email is already registered" });
       throw err;
@@ -182,5 +206,5 @@ export async function registerAuth(app: FastifyInstance) {
     return { ok: true };
   });
 
-  app.get("/auth/me", { preHandler: requireAuth }, async req => ({ user: req.user }));
+  app.get("/auth/me", { preHandler: requireAuth }, async req => ({ user: req.user, workspaceStatus: req.workspaceStatus ?? null }));
 }
