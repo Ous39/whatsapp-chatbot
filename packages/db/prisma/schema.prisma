@@ -119,6 +119,7 @@ model Business {
   currentPeriodStart    DateTime             @default(now())
   currentPeriodEnd      DateTime?
   onboardingCompletedAt DateTime?
+  templateAppliedAt     DateTime?
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
   users                 User[]
@@ -135,6 +136,7 @@ model Business {
   savedReplies          SavedReply[]
   whatsappConnections   WhatsAppConnection[]
   auditLogs             AuditLog[]
+  templateInstallations TemplateInstallation[]
 }
 
 model User {
@@ -480,4 +482,16 @@ model SavedReply {
   updatedAt  DateTime @updatedAt
 
   @@unique([businessId, shortcut])
+}
+
+model TemplateInstallation {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  industry   String
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+
+  @@unique([businessId, industry])
+  @@index([businessId])
 }

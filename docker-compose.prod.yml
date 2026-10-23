@@ -1,0 +1,26 @@
+services:
+  postgres:
+    ports: !override []
+    restart: unless-stopped
+
+  redis:
+    ports: !override []
+    restart: unless-stopped
+
+  minio:
+    ports: !override []
+    profiles: ["storage"]
+    restart: unless-stopped
+
+  api:
+    ports: !override
+      - "127.0.0.1:4000:4000"
+    restart: unless-stopped
+
+  worker:
+    restart: unless-stopped
+
+  web:
+    ports: !override
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped

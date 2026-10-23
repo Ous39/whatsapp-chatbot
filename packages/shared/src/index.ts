@@ -88,3 +88,4 @@ export function can(role: Role, permission: string) {
   if (!p) return false;
   return p.includes("*") || p.includes(permission) || p.some(x => x.endsWith(":*") && permission.startsWith(x.slice(0, -1)));
 }
+export * from "./industries.js";

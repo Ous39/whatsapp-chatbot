@@ -10,3 +10,15 @@ __pycache__/
 *.py[cod]
 uploads
 packages/db/generated
+.env.*
+!.env.example
+*.backup
+*.bak
+*.broken
+*.email-patch
+*.sql
+!packages/db/prisma/migrations/**/*.sql
+backups/
+nginx-ssl/
+export.json
+email-endpoints.txt

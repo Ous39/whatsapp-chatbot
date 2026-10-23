@@ -5,6 +5,8 @@ import { db } from "@oceanbrown/db";
 import { can, loginSchema, passwordResetRequestSchema, passwordResetSchema, registerSchema, type Role, type SessionUser } from "@oceanbrown/shared";
 import { config } from "./config.js";
 import { sendTransactionalEmail } from "./email.js";
+import { provisionIndustryTemplate } from "./templates.js";
+import { INDUSTRIES, type IndustryKey } from "@oceanbrown/shared";
 
 declare module "@fastify/jwt" {
   interface FastifyJWT {
@@ -84,13 +86,24 @@ export async function registerAuth(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: "Name, email, business name and a 10-character password are required", details: parsed.error.flatten() });
     const body = parsed.data;
     if (await db.user.findUnique({ where: { email: body.email }, select: { id: true } })) return reply.code(409).send({ error: "Email is already registered" });
+    
+    // Validate and default industry
+    let industryKey: IndustryKey = (body.industry as IndustryKey) || "OTHER";
+    if (!INDUSTRIES[industryKey]) {
+      industryKey = "OTHER";
+    }
     const base = body.businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 45) || "business";
     const slug = `${base}-${crypto.randomUUID().slice(0, 8)}`;
     const passwordHash = await bcrypt.hash(body.password, 12);
     try {
       const user = await db.$transaction(async tx => {
-        const business = await tx.business.create({ data: { name: body.businessName, slug, industry: body.industry ?? "Other", timezone: "Africa/Banjul" } });
+        const business = await tx.business.create({ data: { name: body.businessName, slug, industry: industryKey, timezone: "Africa/Banjul" } });
         return tx.user.create({ data: { businessId: business.id, email: body.email, name: body.name, passwordHash, role: "OWNER" } });
+      });
+      
+      // Provision template asynchronously (non-blocking)
+      provisionIndustryTemplate(user.businessId!, industryKey).catch(err => {
+        req.log.error({ err, businessId: user.businessId, industry: industryKey }, "Template provisioning failed");
       });
       return reply.code(201).send({ user: await startSession(reply, user) });
     } catch (err: any) {
