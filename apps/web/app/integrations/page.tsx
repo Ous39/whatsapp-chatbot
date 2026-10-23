@@ -4,8 +4,8 @@ import {Guard} from "../../components/Guard";
 import {Shell} from "../../components/Shell";
 import {api} from "../../lib/api";
 
-type Connection={id:string;phoneNumberId:string;wabaId:string|null;displayPhone:string|null;verifiedName:string|null;status:string;webhookHealthy:boolean;lastWebhookAt:string|null;lastError:string|null;hasAccessToken:boolean};
-type State={connection:Connection|null;webhookUrl:string;liveEnabled:boolean;server:{appSecret:boolean;verifyToken:boolean;encryptionKey:boolean;envAccessToken:string|null}};
+type Connection={id:string;phoneNumberId:string;wabaId:string|null;displayPhone:string|null;verifiedName:string|null;status:string;webhookHealthy:boolean;lastWebhookAt:string|null;lastError:string|null;hasAccessToken:boolean;ownershipVerified?:boolean};
+type State={connection:Connection|null;webhookUrl:string;liveEnabled:boolean;server:{appSecret:boolean;verifyToken:boolean;encryptionKey:boolean}};
 type Embedded={enabled:boolean;appId:string|null;configId:string|null;graphVersion:string};
 declare global { interface Window { FB?: { init:(config:Record<string,unknown>)=>void;login:(callback:(response:any)=>void,options:Record<string,unknown>)=>void }; fbAsyncInit?:()=>void } }
 
@@ -41,7 +41,7 @@ export default function Integrations(){
    </form>
    <div className="card integration-status">
     <h2>Status</h2>
-    <div className="row"><span className={c?.status==="CONNECTED"?"pill":"pill gray"}>{c?.status??"NOT CONNECTED"}</span><div className="grow"><strong>{c?.verifiedName??c?.displayPhone??"No number saved"}</strong><p>{c?.lastError??(c?.lastWebhookAt?`Last webhook ${new Date(c.lastWebhookAt).toLocaleString()}`:"No webhook received yet")}</p></div></div>
+    <div className="row"><span className={c?.status==="CONNECTED"?"pill":"pill gray"}>{c?.status==="CONNECTED"&&c.ownershipVerified===false?"UNVERIFIED — run Test connection":c?.status??"NOT CONNECTED"}</span><div className="grow"><strong>{c?.verifiedName??c?.displayPhone??"No number saved"}</strong><p>{c?.lastError??(c?.lastWebhookAt?`Last webhook ${new Date(c.lastWebhookAt).toLocaleString()}`:"No webhook received yet")}</p></div></div>
     <h2 style={{marginTop:18}}>Webhook setup in Meta</h2>
     <div className="row integration-webhook"><div className="grow"><strong>Callback URL</strong><p><code>{state?.webhookUrl??"…"}</code></p></div><button className="btn secondary" type="button" onClick={()=>state&&navigator.clipboard.writeText(state.webhookUrl)}>Copy</button></div>
     <div className="row"><div className="grow"><strong>Verify token</strong><p>Use the value of <code>META_VERIFY_TOKEN</code> from the server environment. Subscribe to the <code>messages</code> field.</p></div></div>

@@ -34,11 +34,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
       - run: pnpm db:migrate
+      # The demo seed only runs with an explicit development or test environment.
       - run: pnpm db:seed
+        env:
+          NODE_ENV: test
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
       - name: API smoke test
+        env:
+          NODE_ENV: test
         run: |
           cd apps/api
           node --import tsx dist/server.js &

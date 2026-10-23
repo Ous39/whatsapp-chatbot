@@ -5,6 +5,7 @@ export * from "./graph.js";
 export * from "./ai.js";
 export * from "./secrets.js";
 export * from "./voice.js";
+export * from "./whatsapp-token.js";
 
 export const roles = ["SUPER_ADMIN", "OWNER", "ADMIN", "SUPERVISOR", "AGENT"] as const;
 export const roleSchema = z.enum(roles);

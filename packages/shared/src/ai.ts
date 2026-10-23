@@ -121,20 +121,33 @@ export function buildTurns(history: AgentTurn[], message: string, maxTurns = 12)
   return turns;
 }
 
-export function parseModelOutput(raw: string): { reply: string; action: AgentAction; sources: number[] } {
+export function parseModelOutput(raw: string): { reply: string; action: AgentAction; sources: number[]; structured: boolean } {
   const match = raw.match(/\{[\s\S]*\}/);
   if (match) {
     try {
       const j = JSON.parse(match[0]);
       const action: AgentAction = ["ANSWER", "CLARIFY", "HANDOVER"].includes(j.action) ? j.action : "ANSWER";
       if (typeof j.reply === "string" && j.reply.trim()) {
-        return { reply: j.reply.trim(), action, sources: Array.isArray(j.sources) ? j.sources.filter((n: unknown) => Number.isInteger(n)) : [] };
+        return { reply: j.reply.trim(), action, sources: Array.isArray(j.sources) ? j.sources.filter((n: unknown) => Number.isInteger(n)) : [], structured: true };
       }
     } catch {
       /* fall through */
     }
   }
-  return { reply: raw.trim(), action: "ANSWER", sources: [] };
+  return { reply: raw.trim(), action: "ANSWER", sources: [], structured: false };
+}
+
+/**
+ * Grounding guard applied to every model answer before it reaches a customer.
+ * - Output that is not the requested JSON is never sent as-is.
+ * - An ANSWER that cites no source and contains figures (prices, dates, times, phone numbers) is the
+ *   typical shape of an invented fact, so it becomes a clarifying question instead.
+ * Greetings and other answers without figures may still be sent without a source.
+ */
+export function enforceGrounding(parsed: { reply: string; action: AgentAction; sources: number[]; structured: boolean }, citedSources: number): { reply: string; action: AgentAction; grounded: boolean } {
+  if (!parsed.structured) return { reply: "", action: "CLARIFY", grounded: false };
+  if (parsed.action === "ANSWER" && citedSources === 0 && /\d/.test(parsed.reply)) return { reply: "", action: "CLARIFY", grounded: false };
+  return { reply: parsed.reply, action: parsed.action, grounded: true };
 }
 
 async function postJson(cfg: AiConfig, url: string, headers: Record<string, string>, body: unknown) {
@@ -186,6 +199,8 @@ export async function generateReply(cfg: AiConfig, ctx: ReplyContext): Promise<A
 
   const parsed = parseModelOutput(raw);
   const sources = parsed.sources.map(n => docs[n - 1]).filter((d): d is KnowledgeDoc => !!d).map(d => ({ id: d.id, title: d.title }));
-  const text = parsed.reply.slice(0, 4000) || handoverText(ctx.language);
-  return { text, action: parsed.reply ? parsed.action : "HANDOVER", sources, provider: cfg.provider, simulated: false, usage };
+  const checked = enforceGrounding(parsed, sources.length);
+  if (!checked.grounded) return { text: CLARIFY_TEXTS[ctx.language ?? "en"], action: "CLARIFY", sources: [], provider: cfg.provider, simulated: false, usage };
+  const text = checked.reply.slice(0, 4000) || handoverText(ctx.language);
+  return { text, action: checked.reply ? checked.action : "HANDOVER", sources, provider: cfg.provider, simulated: false, usage };
 }

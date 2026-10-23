@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { db } from "@oceanbrown/db";
-import { parseWebhookPayload } from "@oceanbrown/shared";
+import { parseWebhookPayload, VERIFIED_CONNECTION } from "@oceanbrown/shared";
 import { config } from "./config.js";
 import { enqueue } from "./queue.js";
 
@@ -32,7 +32,8 @@ export async function registerWebhook(app: FastifyInstance) {
   });
 
   // Event delivery: authenticate the raw body, persist, acknowledge fast, process in the worker.
-  app.post("/webhooks/meta", { config: { rateLimit: { max: 3000, timeWindow: "1 minute" } } }, async (req, reply) => {
+  // Meta documents webhook payloads of up to 3 MB; the global body limit is 1 MB.
+  app.post("/webhooks/meta", { bodyLimit: 3 * 1024 * 1024, config: { rateLimit: { max: 3000, timeWindow: "1 minute" } } }, async (req, reply) => {
     const raw = (req as typeof req & { rawBody?: Buffer }).rawBody;
     if (!raw || !validMetaSignature(raw, req.headers["x-hub-signature-256"], config.whatsapp.appSecret)) {
       req.log.warn("Rejected webhook with invalid signature");
@@ -41,7 +42,12 @@ export async function registerWebhook(app: FastifyInstance) {
     const payload = req.body as any;
     const items = parseWebhookPayload(payload);
     const phoneNumberIds = [...new Set(items.map(i => i.phoneNumberId))];
-    const connections = phoneNumberIds.length ? await db.whatsAppConnection.findMany({ where: { phoneNumberId: { in: phoneNumberIds } }, select: { id: true, businessId: true } }) : [];
+    // Only numbers whose ownership was verified with the workspace's own token receive messages, and the
+    // webhook's WABA must match the one saved for the number. An unverified claim never sees traffic.
+    const candidates = phoneNumberIds.length
+      ? await db.whatsAppConnection.findMany({ where: { phoneNumberId: { in: phoneNumberIds }, ...VERIFIED_CONNECTION }, select: { id: true, businessId: true, phoneNumberId: true, wabaId: true } })
+      : [];
+    const connections = candidates.filter(c => !c.wabaId || items.some(i => i.phoneNumberId === c.phoneNumberId && (!i.wabaId || i.wabaId === c.wabaId)));
     // One delivery = one event row, keyed by the body hash so Meta retries are idempotent.
     const externalId = "sha256:" + crypto.createHash("sha256").update(raw).digest("hex");
     const businessId = connections.length === 1 ? connections[0]!.businessId : null;

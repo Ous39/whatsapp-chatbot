@@ -151,6 +151,8 @@ model User {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   passwordChangedAt   DateTime?
+  failedLoginCount    Int                  @default(0)
+  lockedUntil         DateTime?
   assignments         Conversation[]       @relation("AssignedAgent")
   notes               InternalNote[]
   passwordResetTokens PasswordResetToken[]
@@ -322,6 +324,9 @@ model WhatsAppConnection {
   webhookHealthy       Boolean   @default(false)
   lastWebhookAt        DateTime?
   lastError            String?
+  /// Set only after Meta confirms, with this workspace's own token, that the number belongs to its WABA.
+  /// Webhooks are routed and messages sent only for connections that are CONNECTED and verified.
+  ownershipVerifiedAt  DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 

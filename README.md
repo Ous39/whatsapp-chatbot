@@ -11,11 +11,12 @@ It runs fully offline by default. Real WhatsApp delivery and a real AI model are
 Requirements: Node.js 22+, Docker Desktop, and pnpm (`corepack enable`). The API, worker and database scripts read the root `.env` automatically.
 
 1. Copy `.env.example` to `.env`. For local use the defaults work; set `ENCRYPTION_KEY` (`openssl rand -hex 32`) if you want to save WhatsApp tokens.
-2. Start infrastructure: `docker compose up -d postgres redis minio`
+2. Start infrastructure: `docker compose up -d postgres redis`
 3. Install: `pnpm install`
 4. Database: `pnpm db:generate && pnpm db:migrate && pnpm db:seed`
 5. Run everything: `pnpm dev` (web on :3000, API on :4000, worker in the background)
-6. Open http://localhost:3000 and sign in with `owner@oceanbrown.local` / `OceanBrown123!` (local demo data only — the seed refuses to run with `NODE_ENV=production`).
+6. Open http://localhost:3000 and sign in with `owner@oceanbrown.local` / `OceanBrown123!` (local demo data only — the seed runs only with `NODE_ENV=development` or `test` and never creates a platform administrator).
+7. Platform administrators are created with a generated password: `pnpm db:create-admin you@your-domain.gm "Your Name"`.
 
 Validate with `pnpm typecheck`, `pnpm test` and `pnpm build`. The same steps run in GitHub Actions on every push (`.github/workflows/ci.yml`).
 
@@ -36,8 +37,9 @@ Customers can send WhatsApp voice notes. The agent transcribes them, answers in 
 
 See [docs/META-SETUP.md](docs/META-SETUP.md). In short:
 
-- Set `META_APP_SECRET`, `META_VERIFY_TOKEN`, `ENCRYPTION_KEY`, `API_URL` (public HTTPS URL) and a strong `JWT_SECRET`.
-- In the dashboard: **Integrations** → enter the phone number ID and permanent token → **Test connection**.
+- Set `META_APP_SECRET`, `META_VERIFY_TOKEN`, `ENCRYPTION_KEY`, `API_URL` (public HTTPS URL) and a strong `JWT_SECRET`. The API and worker refuse to start without them unless `NODE_ENV` is `development` or `test`; Docker Compose always runs them with `NODE_ENV=production`.
+- After upgrading an existing server, follow [docs/P0-SECURITY-UPGRADE.md](docs/P0-SECURITY-UPGRADE.md).
+- In the dashboard: **Integrations** → enter the phone number ID, WABA ID and permanent token → **Test connection**. The test proves the number belongs to that WABA; only verified numbers receive webhooks or send messages.
 - Point Meta's webhook at the callback URL shown there and subscribe to `messages`.
 - Set `WHATSAPP_LIVE_ENABLED=true`, then turn on **Settings → AI auto-replies**.
 - Optional: `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` (or `openai` + `OPENAI_API_KEY`).

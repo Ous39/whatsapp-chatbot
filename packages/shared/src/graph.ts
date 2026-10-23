@@ -99,6 +99,30 @@ export type WhatsAppTemplate = {
   qualityScore?: string;
 };
 
+/** Subscribes this Meta app to a customer's WABA so its webhooks reach us (required after Embedded Signup). */
+export async function subscribeAppToWaba(cfg: GraphConfig, wabaId: string): Promise<void> {
+  const json = await call(cfg, `${encodeURIComponent(wabaId)}/subscribed_apps`, { method: "POST" });
+  if (json?.success === false) throw new WhatsAppApiError("Meta did not confirm the webhook subscription", 200, undefined, false);
+}
+
+/**
+ * Lists the phone number ids that belong to a WhatsApp Business Account, using the caller's token.
+ * Used to prove a workspace owns a number before any message is routed to it.
+ */
+export async function listWabaPhoneNumberIds(cfg: GraphConfig, wabaId: string, maxPages = 5): Promise<string[]> {
+  const ids: string[] = [];
+  let path = `${encodeURIComponent(wabaId)}/phone_numbers?fields=id&limit=100`;
+  for (let page = 0; page < maxPages && path; page += 1) {
+    const json = await call(cfg, path, { method: "GET" });
+    for (const item of Array.isArray(json?.data) ? json.data : []) if (item?.id) ids.push(String(item.id));
+    const next = json?.paging?.next;
+    if (!next) break;
+    const url = new URL(String(next));
+    path = `${url.pathname.replace(/^\/v\d+(?:\.\d+)?\//, "")}${url.search}`;
+  }
+  return ids;
+}
+
 /** Fetches every template for a WhatsApp Business Account, following Meta pagination. */
 export async function listMessageTemplates(cfg: GraphConfig, wabaId: string, maxPages = 20): Promise<WhatsAppTemplate[]> {
   const rows: WhatsAppTemplate[] = [];
@@ -159,7 +183,7 @@ export async function downloadMedia(cfg: GraphConfig, mediaId: string, maxBytes 
   const f = cfg.fetchImpl ?? fetch;
   let res: Response;
   try {
-    res = await f(meta.url, { headers: { Authorization: `Bearer ${cfg.accessToken}` } });
+    res = await f(meta.url, { headers: { Authorization: `Bearer ${cfg.accessToken}` }, signal: AbortSignal.timeout(cfg.timeoutMs ?? 30_000) });
   } catch (err) {
     throw new WhatsAppApiError(`Network error downloading media: ${(err as Error).message}`, 0, undefined, true);
   }

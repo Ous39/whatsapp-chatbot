@@ -27,8 +27,10 @@ Restart the API and worker after changing these.
 
 Sign in as the workspace owner → **Integrations**:
 
-1. Enter the phone number ID, WABA ID and the permanent token → **Save**. The token is encrypted (AES-256-GCM) and never shown again.
-2. Click **Test connection**. The API asks Meta for the number's details; on success the status becomes `CONNECTED`.
+1. Enter the phone number ID, WABA ID (required) and the permanent token → **Save**. The token is encrypted (AES-256-GCM) and never shown again. Saving leaves the number `PENDING`.
+2. Click **Test connection**. The API lists the WABA's phone numbers with that token and requires this number to be among them, then reads the number's details; on success the status becomes `CONNECTED` and ownership is recorded. Until then no webhook is delivered to the workspace and nothing can be sent.
+
+`META_ACCESS_TOKEN` (a system-user token in the environment) is used only by the workspace whose id is in `META_ACCESS_TOKEN_BUSINESS_ID` — normally OceanBrown's own number. Every customer workspace must save its own token.
 
 ## 4. Webhook
 

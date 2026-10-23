@@ -2,7 +2,6 @@ import type { FastifyInstance } from "fastify";
 import { db } from "@oceanbrown/db";
 import {
   canSpeak,
-  decryptSecret,
   detectTextLanguage,
   downloadMedia,
   generateReply,
@@ -12,11 +11,13 @@ import {
   transcribe,
   ttsConfigFromEnv,
   voiceStatus,
+  VERIFIED_CONNECTION,
   WhatsAppApiError,
   type Lang,
 } from "@oceanbrown/shared";
 import { requirePermission, tenantId } from "./auth.js";
 import { aiConfig, config } from "./config.js";
+import { whatsAppTokenFor } from "./whatsapp-routes.js";
 
 const MAX_UPLOAD = 10 * 1024 * 1024;
 
@@ -84,11 +85,10 @@ export async function registerVoiceRoutes(app: FastifyInstance) {
     const meta = (message?.metadata as Record<string, any> | null) ?? {};
     const mediaId = meta.media?.id ?? meta.mediaId;
     if (!message || !mediaId) return reply.code(404).send({ error: "No media for this message" });
-    const connection = await db.whatsAppConnection.findFirst({ where: { businessId }, orderBy: { createdAt: "asc" } });
-    if (!connection) return reply.code(404).send({ error: "No WhatsApp connection" });
-    let accessToken = config.whatsapp.accessToken;
-    if (connection.encryptedAccessToken && config.encryptionKey) accessToken = await decryptSecret(connection.encryptedAccessToken, config.encryptionKey);
-    if (!accessToken) return reply.code(422).send({ error: "No WhatsApp access token configured" });
+    const connection = await db.whatsAppConnection.findFirst({ where: { businessId, ...VERIFIED_CONNECTION }, orderBy: { createdAt: "asc" } });
+    if (!connection) return reply.code(404).send({ error: "No verified WhatsApp connection" });
+    // Same rule as sending: the workspace's own token, or the env token only for its designated workspace.
+    const accessToken = await whatsAppTokenFor(connection);
     try {
       const media = await downloadMedia({ accessToken, phoneNumberId: connection.phoneNumberId, apiVersion: config.whatsapp.graphVersion }, String(mediaId));
       return reply.header("Content-Type", media.mime).header("Cache-Control", "private, max-age=3600").header("Content-Disposition", "inline").send(Buffer.from(media.data));

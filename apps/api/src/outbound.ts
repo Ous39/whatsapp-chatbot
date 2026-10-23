@@ -1,5 +1,5 @@
 import { db } from "@oceanbrown/db";
-import { isWithinServiceWindow } from "@oceanbrown/shared";
+import { isWithinServiceWindow, VERIFIED_CONNECTION } from "@oceanbrown/shared";
 import { config } from "./config.js";
 import { HttpError } from "./auth.js";
 import { enqueue } from "./queue.js";
@@ -7,12 +7,21 @@ import { enqueue } from "./queue.js";
 /**
  * Checks Meta's sending rules before an agent reply is accepted, so staff get
  * an immediate, clear error instead of a silent failure later.
+ *
+ * Previously a reply was stored as QUEUED with a "simulator" transport whenever live mode was off or the
+ * number was not exactly CONNECTED, and nothing was ever sent. Outside development that is now a 422.
  */
 export async function assertCanMessage(businessId: string, customer: { optedOutAt: Date | null; lastInboundAt: Date | null }) {
   if (customer.optedOutAt) throw new HttpError(422, "This customer opted out of WhatsApp messages (sent STOP). They must message you again or send START first.");
-  if (!config.whatsapp.liveEnabled) return { transport: "simulator" as const };
-  const connection = await db.whatsAppConnection.findFirst({ where: { businessId, status: "CONNECTED" }, select: { id: true } });
-  if (!connection) return { transport: "simulator" as const };
+  if (!config.whatsapp.liveEnabled) {
+    // Local development and tests keep the offline simulator.
+    if (config.isDevOrTest) return { transport: "simulator" as const };
+    throw new HttpError(422, "WhatsApp delivery is switched off on this server (WHATSAPP_LIVE_ENABLED is not true), so this reply would not reach the customer. Ask OceanBrown support to enable live delivery.");
+  }
+  const connection = await db.whatsAppConnection.findFirst({ where: { businessId, ...VERIFIED_CONNECTION }, select: { id: true } });
+  if (!connection) {
+    throw new HttpError(422, "This workspace has no verified, connected WhatsApp number, so the reply cannot be sent. Open Integrations and run Test connection.");
+  }
   if (!isWithinServiceWindow(customer.lastInboundAt)) {
     throw new HttpError(422, "The 24-hour customer service window has closed. WhatsApp only allows an approved template message until the customer replies.");
   }

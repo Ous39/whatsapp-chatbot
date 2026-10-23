@@ -68,6 +68,39 @@ describe("Meta webhook", () => {
   });
 });
 
+describe("Webhook routing to verified numbers only", () => {
+  it("asks only for CONNECTED, ownership-verified connections", async () => {
+    await app.inject({ method: "POST", url: "/webhooks/meta", headers: { "content-type": "application/json", "x-hub-signature-256": sign(body) }, payload: body });
+    const where = (mocks.findMany.mock.calls[0] as any[])[0].where;
+    expect(where.status).toBe("CONNECTED");
+    expect(where.ownershipVerifiedAt).toEqual({ not: null });
+  });
+
+  it("does not deliver events for an unverified or unknown number", async () => {
+    mocks.findMany.mockResolvedValueOnce([]);
+    const res = await app.inject({ method: "POST", url: "/webhooks/meta", headers: { "content-type": "application/json", "x-hub-signature-256": sign(body) }, payload: body });
+    expect(res.statusCode).toBe(200);
+    const args = (mocks.upsert.mock.calls[0] as any[])[0];
+    expect(args.create.status).toBe("UNMATCHED");
+    expect(args.create.businessId).toBeNull();
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("does not deliver events whose WABA differs from the saved one", async () => {
+    mocks.findMany.mockResolvedValueOnce([{ id: "conn1", businessId: "biz1", phoneNumberId: "123456", wabaId: "999" }] as any);
+    const otherWaba = JSON.stringify({ ...JSON.parse(body), entry: [{ id: "111", ...JSON.parse(body).entry[0] }] });
+    await app.inject({ method: "POST", url: "/webhooks/meta", headers: { "content-type": "application/json", "x-hub-signature-256": sign(otherWaba) }, payload: otherWaba });
+    expect((mocks.upsert.mock.calls[0] as any[])[0].create.status).toBe("UNMATCHED");
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("accepts payloads above 1 MB (Meta allows up to 3 MB)", async () => {
+    const big = JSON.stringify({ ...JSON.parse(body), padding: "x".repeat(1_500_000) });
+    const res = await app.inject({ method: "POST", url: "/webhooks/meta", headers: { "content-type": "application/json", "x-hub-signature-256": sign(big) }, payload: big });
+    expect(res.statusCode).toBe(200);
+  });
+});
+
 describe("API hardening", () => {
   it("returns 400 (not 500) for malformed JSON", async () => {
     const res = await app.inject({ method: "POST", url: "/auth/login", headers: { "content-type": "application/json" }, payload: "{not json" });

@@ -71,12 +71,14 @@ export async function audit(action: string, entityType: string, entityId: string
 
 async function startSession(reply: FastifyReply, user: { id: string; businessId: string | null; role: string; email: string; name: string }) {
   const token = await reply.jwtSign({ sub: user.id }, { expiresIn: `${config.sessionHours}h` });
-  reply.setCookie(COOKIE, token, { httpOnly: true, sameSite: "lax", secure: config.isProd, path: "/", maxAge: config.sessionHours * 3600 });
+  reply.setCookie(COOKIE, token, { httpOnly: true, sameSite: "lax", secure: !config.isDevOrTest, path: "/", maxAge: config.sessionHours * 3600 });
   const session: SessionUser = { id: user.id, businessId: user.businessId, role: user.role as Role, email: user.email, name: user.name };
   return session;
 }
 
 const authRateLimit = { rateLimit: { max: 10, timeWindow: "1 minute" } };
+const MAX_FAILED_LOGINS = 10;
+const LOCKOUT_MINUTES = 15;
 const tokenHash = (value: string) => createHash("sha256").update(value).digest("hex");
 
 export async function registerAuth(app: FastifyInstance) {
@@ -119,10 +121,22 @@ export async function registerAuth(app: FastifyInstance) {
     const user = await db.user.findUnique({ where: { email } });
     // Always run bcrypt so response time does not reveal whether the email exists.
     const ok = await bcrypt.compare(password, user?.passwordHash ?? (await getDummyHash()));
-    if (!user || !user.active || !ok) {
-      req.log.warn({ email }, "Failed login");
-      return reply.code(401).send({ error: "Invalid credentials" });
+    const now = new Date();
+    const locked = !!user?.lockedUntil && user.lockedUntil > now;
+    if (!user || !user.active || !ok || locked) {
+      // Per-account lockout complements the per-IP rate limit, which a botnet can spread across addresses.
+      if (user && !ok && !locked) {
+        const failures = user.failedLoginCount + 1;
+        await db.user.update({
+          where: { id: user.id },
+          data: failures >= MAX_FAILED_LOGINS ? { failedLoginCount: 0, lockedUntil: new Date(now.getTime() + LOCKOUT_MINUTES * 60_000) } : { failedLoginCount: failures },
+        });
+      }
+      req.log.warn({ userId: user?.id ?? null, locked }, "Failed login");
+      // One message for every failure, so it never reveals whether an account exists or is locked.
+      return reply.code(401).send({ error: `Invalid email or password. After ${MAX_FAILED_LOGINS} failed attempts, sign-in is paused for ${LOCKOUT_MINUTES} minutes.` });
     }
+    if (user.failedLoginCount || user.lockedUntil) await db.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
     return { user: await startSession(reply, user) };
   });
 
@@ -144,7 +158,7 @@ export async function registerAuth(app: FastifyInstance) {
     return {
       ok: true,
       message: "If that account exists, password reset instructions have been prepared.",
-      ...(!config.isProd && rawToken ? { resetToken: rawToken } : {}),
+      ...(config.devExposeTokens && rawToken ? { resetToken: rawToken } : {}),
     };
   });
 
@@ -156,7 +170,7 @@ export async function registerAuth(app: FastifyInstance) {
     if (!reset || reset.usedAt || reset.expiresAt <= now || !reset.user.active) return reply.code(400).send({ error: "This reset link is invalid or has expired" });
     const passwordHash = await bcrypt.hash(parsed.data.password, 12);
     await db.$transaction([
-      db.user.update({ where: { id: reset.userId }, data: { passwordHash, passwordChangedAt: now } }),
+      db.user.update({ where: { id: reset.userId }, data: { passwordHash, passwordChangedAt: now, failedLoginCount: 0, lockedUntil: null } }),
       db.passwordResetToken.update({ where: { id: reset.id }, data: { usedAt: now } }),
       db.passwordResetToken.updateMany({ where: { userId: reset.userId, id: { not: reset.id }, usedAt: null }, data: { usedAt: now } }),
     ]);

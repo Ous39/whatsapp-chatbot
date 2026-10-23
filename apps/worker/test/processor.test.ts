@@ -35,13 +35,16 @@ function queued(customer: Record<string, unknown> = {}, metadata: Record<string,
 describe("sendQueuedMessage", () => {
   beforeEach(() => {
     state.updates = [];
-    state.connection = { id: "c1", phoneNumberId: "111", encryptedAccessToken: null, status: "CONNECTED" };
+    state.connection = { id: "c1", businessId: "b1", phoneNumberId: "111", encryptedAccessToken: null, status: "CONNECTED", ownershipVerifiedAt: new Date() };
     process.env.WHATSAPP_LIVE_ENABLED = "true";
     process.env.META_ACCESS_TOKEN = "test-token-1234567890";
+    // The shared environment token belongs to workspace b1 only.
+    process.env.META_ACCESS_TOKEN_BUSINESS_ID = "b1";
   });
   afterEach(() => {
     vi.unstubAllGlobals();
     delete process.env.WHATSAPP_LIVE_ENABLED;
+    delete process.env.META_ACCESS_TOKEN_BUSINESS_ID;
   });
 
   it("never sends while live mode is off", async () => {
@@ -50,6 +53,16 @@ describe("sendQueuedMessage", () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     expect(await sendQueuedMessage("m1", log)).toEqual({ simulated: true });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("never lends the environment token to another workspace (C3)", async () => {
+    process.env.META_ACCESS_TOKEN_BUSINESS_ID = "someone-else";
+    state.message = queued();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const r: any = await sendQueuedMessage("m1", log);
+    expect(r.failed).toContain("No access token");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

@@ -4,6 +4,8 @@
 export type InboundMessage = {
   kind: "message";
   phoneNumberId: string;
+  /** WhatsApp Business Account id from the webhook entry (entry.id). */
+  wabaId?: string;
   displayPhone?: string;
   waId: string;
   phone: string;
@@ -19,6 +21,7 @@ export type InboundMessage = {
 export type StatusUpdate = {
   kind: "status";
   phoneNumberId: string;
+  wabaId?: string;
   messageId: string;
   status: "sent" | "delivered" | "read" | "failed";
   recipientId?: string;
@@ -94,6 +97,7 @@ export function parseWebhookPayload(payload: unknown): WebhookItem[] {
   const p = payload as any;
   if (!p || p.object !== "whatsapp_business_account" || !Array.isArray(p.entry)) return out;
   for (const entry of p.entry) {
+    const wabaId = entry?.id ? String(entry.id) : undefined;
     for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
       if (change?.field !== "messages") continue;
       const value = change.value ?? {};
@@ -108,6 +112,7 @@ export function parseWebhookPayload(payload: unknown): WebhookItem[] {
         out.push({
           kind: "message",
           phoneNumberId,
+          wabaId,
           displayPhone,
           waId: String(m.from),
           phone: toE164(m.from),
@@ -125,6 +130,7 @@ export function parseWebhookPayload(payload: unknown): WebhookItem[] {
         out.push({
           kind: "status",
           phoneNumberId,
+          wabaId,
           messageId: String(s.id),
           status: s.status,
           recipientId: s.recipient_id,

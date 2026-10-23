@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { detectIntent, isWithinServiceWindow, parseWebhookPayload, shouldApplyStatus, toE164, toWaRecipient } from "./whatsapp";
 import { listMessageTemplates, sendMessage, WhatsAppApiError } from "./graph";
 import { decryptSecret, encryptSecret, maskSecret } from "./secrets";
-import { buildTurns, generateReply, parseModelOutput, rankKnowledge } from "./ai";
+import { buildTurns, enforceGrounding, generateReply, parseModelOutput, rankKnowledge } from "./ai";
 
 const payload = {
   object: "whatsapp_business_account",
@@ -164,6 +164,21 @@ describe("ai helpers", () => {
     expect(r.sources[0]?.title).toBe("Opening hours");
     expect(sent.messages[0].role).toBe("user");
     expect(sent.system).toContain("Opening hours");
+  });
+  it("never sends unstructured model output to a customer", async () => {
+    const fetchImpl = (async () => new Response(JSON.stringify({ content: [{ type: "text", text: "Sure! Delivery costs D150 and takes 2 days." }] }), { status: 200 })) as unknown as typeof fetch;
+    const r = await generateReply({ provider: "anthropic", apiKey: "k", fetchImpl }, { businessName: "Demo", knowledge: docs, history: [], message: "delivery cost?" });
+    expect(r.action).toBe("CLARIFY");
+    expect(r.text).not.toContain("D150");
+  });
+  it("turns an unsourced answer with figures into a clarifying question", () => {
+    expect(enforceGrounding({ reply: "It costs D500", action: "ANSWER", sources: [], structured: true }, 0).action).toBe("CLARIFY");
+    expect(enforceGrounding({ reply: "It costs D500", action: "ANSWER", sources: [1], structured: true }, 1).action).toBe("ANSWER");
+    expect(enforceGrounding({ reply: "Hello! How can I help?", action: "ANSWER", sources: [], structured: true }, 0).action).toBe("ANSWER");
+  });
+  it("parses the WABA id from the webhook entry", () => {
+    const items = parseWebhookPayload({ object: "whatsapp_business_account", entry: [{ id: "555", changes: [{ field: "messages", value: { metadata: { phone_number_id: "1" }, messages: [{ from: "2207001111", id: "w1", type: "text", text: { body: "Hi" } }] } }] }] });
+    expect(items[0]?.wabaId).toBe("555");
   });
   it("hands over without calling the model", async () => {
     const fetchImpl = (async () => {

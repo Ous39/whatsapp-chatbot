@@ -2,7 +2,6 @@ import { db } from "@oceanbrown/db";
 import { prepareVoiceNote } from "./audio.js";
 import {
   canSpeak,
-  decryptSecret,
   detectIntent,
   detectTextLanguage,
   downloadMedia,
@@ -19,9 +18,13 @@ import {
   markAsRead,
   parseWebhookPayload,
   resolveAiProvider,
+  resolveWhatsAppToken,
   sendMessage,
   shouldApplyStatus,
+  tokenEnvFrom,
+  VERIFIED_CONNECTION,
   WhatsAppApiError,
+  WhatsAppTokenUnavailable,
   type AiConfig,
   type InboundMessage,
   type StatusUpdate,
@@ -31,8 +34,6 @@ export type Enqueue = (name: "send-message", data: { messageId: string }, jobId:
 
 const env = {
   live: () => process.env.WHATSAPP_LIVE_ENABLED === "true",
-  encryptionKey: () => process.env.ENCRYPTION_KEY,
-  envToken: () => process.env.META_ACCESS_TOKEN || undefined,
   graphVersion: () => process.env.META_GRAPH_VERSION || undefined,
   voice: () => process.env.VOICE_ENABLED !== "false",
   voiceAlsoText: () => process.env.VOICE_ALSO_TEXT !== "false",
@@ -63,15 +64,22 @@ const VOICE_FAILED_REPLY: Record<Lang, string> = {
 
 export class PermanentJobError extends Error {}
 
-async function accessTokenFor(conn: { encryptedAccessToken: string | null }) {
-  if (conn.encryptedAccessToken) {
-    const key = env.encryptionKey();
-    if (!key) throw new PermanentJobError("ENCRYPTION_KEY is not configured on the worker");
-    return decryptSecret(conn.encryptedAccessToken, key);
+/** The workspace's own token, or META_ACCESS_TOKEN only for the workspace in META_ACCESS_TOKEN_BUSINESS_ID. */
+async function accessTokenFor(conn: { businessId: string; encryptedAccessToken: string | null }) {
+  try {
+    return await resolveWhatsAppToken(conn, tokenEnvFrom(process.env));
+  } catch (err) {
+    if (err instanceof WhatsAppTokenUnavailable) throw new PermanentJobError(err.message);
+    throw err;
   }
-  const t = env.envToken();
-  if (!t) throw new PermanentJobError("No WhatsApp access token configured");
-  return t;
+}
+
+/** Only verified, connected numbers receive traffic; the webhook's WABA must match the saved one. */
+async function verifiedConnection(item: { phoneNumberId: string; wabaId?: string }) {
+  const connection = await db.whatsAppConnection.findFirst({ where: { phoneNumberId: item.phoneNumberId, ...VERIFIED_CONNECTION } });
+  if (!connection) return null;
+  if (connection.wabaId && item.wabaId && connection.wabaId !== item.wabaId) return null;
+  return connection;
 }
 
 async function createOutbound(businessId: string, conversationId: string, body: string, clientId: string, source: "ai" | "system", extra: Record<string, unknown> = {}) {
@@ -84,8 +92,8 @@ async function createOutbound(businessId: string, conversationId: string, body: 
 
 /** Store one inbound message and decide whether the agent should reply. */
 async function handleInbound(item: InboundMessage, enqueue: Enqueue, log: Logger) {
-  const connection = await db.whatsAppConnection.findUnique({ where: { phoneNumberId: item.phoneNumberId } });
-  if (!connection) return log.warn({ phoneNumberId: item.phoneNumberId }, "Inbound message for unknown number");
+  const connection = await verifiedConnection(item);
+  if (!connection) return log.warn({ phoneNumberId: item.phoneNumberId }, "Inbound message for an unknown or unverified number");
   const businessId = connection.businessId;
 
   const customer = await db.customer.upsert({
@@ -210,11 +218,19 @@ async function handleInbound(item: InboundMessage, enqueue: Enqueue, log: Logger
     .filter(m => m.externalId !== item.messageId)
     .map(m => ({ role: m.direction === "INBOUND" ? ("customer" as const) : ("agent" as const), text: m.body }));
 
-  const reply = await generateReply(aiConfigFromEnv(), { businessName: business.name, industry: business.industry, timezone: business.timezone, knowledge, history: turns, message: text, language: replyLang, spoken: speak });
+  let reply: Awaited<ReturnType<typeof generateReply>>;
+  try {
+    reply = await generateReply(aiConfigFromEnv(), { businessName: business.name, industry: business.industry, timezone: business.timezone, knowledge, history: turns, message: text, language: replyLang, spoken: speak });
+  } catch (err) {
+    // The inbound message is already stored, so a retry of this job would see a duplicate and stay silent.
+    // Hand the conversation to staff instead of leaving the customer without an answer.
+    log.error({ conversationId: conversation.id, err: (err as Error).message }, "AI provider failed; handing over to staff");
+    reply = { text: "", action: "HANDOVER", sources: [], provider: aiConfigFromEnv().provider, simulated: false };
+  }
 
   if (reply.action === "HANDOVER") {
     await db.conversation.update({ where: { id: conversation.id }, data: { mode: "HUMAN", humanTakenAt: new Date() } });
-    await db.auditLog.create({ data: { businessId, action: "conversation.handover", entityType: "Conversation", entityId: conversation.id, metadata: { reason: "agent", provider: reply.provider } } });
+    await db.auditLog.create({ data: { businessId, action: "conversation.handover", entityType: "Conversation", entityId: conversation.id, metadata: { reason: reply.text ? "agent" : "ai_error", provider: reply.provider } } });
   }
   const replyText = reply.action === "HANDOVER" ? business.handoverMessage || handoverText(replyLang) : reply.text;
   const meta = { action: reply.action, provider: reply.provider, sources: reply.sources, usage: reply.usage ?? null, language: replyLang };
@@ -234,7 +250,7 @@ async function handleInbound(item: InboundMessage, enqueue: Enqueue, log: Logger
 }
 
 async function handleStatus(item: StatusUpdate, log: Logger) {
-  const connection = await db.whatsAppConnection.findUnique({ where: { phoneNumberId: item.phoneNumberId }, select: { businessId: true } });
+  const connection = await verifiedConnection(item);
   if (!connection) return;
   const message = await db.message.findUnique({ where: { businessId_externalId: { businessId: connection.businessId, externalId: item.messageId } } });
   if (!message) {
@@ -327,7 +343,7 @@ export async function sendCampaignRecipient(recipientId: string, log: Logger) {
     await refreshCampaignCounters(recipient.campaignId);
     return { failed: "live_disabled" };
   }
-  const connection = await db.whatsAppConnection.findFirst({ where: { businessId: recipient.businessId, status: "CONNECTED" } });
+  const connection = await db.whatsAppConnection.findFirst({ where: { businessId: recipient.businessId, ...VERIFIED_CONNECTION } });
   if (!connection) {
     await db.campaignRecipient.update({ where: { id: recipient.id }, data: { status: "FAILED", error: "No connected WhatsApp number", attempts: { increment: 1 } } });
     await refreshCampaignCounters(recipient.campaignId);
@@ -402,7 +418,7 @@ export async function sendQueuedMessage(messageId: string, log: Logger, enqueue?
   const customer = message.conversation.customer;
   if (customer.optedOutAt && !meta.optOutConfirmation) return fail("Customer opted out");
   if (!isWithinServiceWindow(customer.lastInboundAt)) return fail("Outside the 24-hour customer service window; an approved template is required");
-  const connection = await db.whatsAppConnection.findFirst({ where: { businessId: message.businessId, status: "CONNECTED" } });
+  const connection = await db.whatsAppConnection.findFirst({ where: { businessId: message.businessId, ...VERIFIED_CONNECTION } });
   if (!connection) return fail("No connected WhatsApp number");
 
   try {

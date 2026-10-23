@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { db } from "@oceanbrown/db";
-import { campaignSchema, customerImportSchema, listMessageTemplates, passwordResetSchema, teamInviteSchema } from "@oceanbrown/shared";
+import { campaignSchema, customerImportSchema, listMessageTemplates, passwordResetSchema, teamInviteSchema, VERIFIED_CONNECTION } from "@oceanbrown/shared";
 import { z } from "zod";
 import { audit, requireAuth, requirePermission, tenantId } from "./auth.js";
 import { config } from "./config.js";
@@ -69,7 +69,7 @@ export async function registerCommercialRoutes(app: FastifyInstance) {
 
   app.post("/templates/sync", { preHandler: requirePermission("business:*"), config: { rateLimit: { max: 5, timeWindow: "1 minute" } } }, async (req, reply) => {
     const businessId = tenantId(req);
-    const connection = await db.whatsAppConnection.findFirst({ where: { businessId, status: "CONNECTED" } });
+    const connection = await db.whatsAppConnection.findFirst({ where: { businessId, ...VERIFIED_CONNECTION } });
     if (!connection?.wabaId) return reply.code(422).send({ error: "Connect WhatsApp and save the WABA ID before syncing templates" });
     const templates = await listMessageTemplates({ accessToken: await whatsAppTokenFor(connection), phoneNumberId: connection.phoneNumberId, apiVersion: config.whatsapp.graphVersion }, connection.wabaId);
     const now = new Date();
@@ -184,14 +184,14 @@ export async function registerCommercialRoutes(app: FastifyInstance) {
   app.post("/team/invites", { preHandler: requirePermission("team:*") }, async (req, reply) => {
     const parsed = teamInviteSchema.safeParse(req.body);
     if (!parsed.success) return bad(reply, "Name, email and role are required", parsed.error.flatten());
-    if (config.isProd && !config.email.resendApiKey) return reply.code(503).send({ error: "Transactional email is not configured" });
+    if (!config.isDevOrTest && !config.email.resendApiKey) return reply.code(503).send({ error: "Transactional email is not configured" });
     if (await db.user.findUnique({ where: { email: parsed.data.email }, select: { id: true } })) return reply.code(409).send({ error: "That email already belongs to an account" });
     const rawToken = randomBytes(32).toString("hex");
     const row = await db.teamInvite.create({ data: { businessId: tenantId(req), invitedById: req.user.id, ...parsed.data, tokenHash: hash(rawToken), expiresAt: new Date(Date.now() + 7 * 86_400_000) }, select: { id: true, email: true, name: true, role: true, expiresAt: true } });
     const inviteUrl = `${(config.appUrl.split(",")[0]?.trim() || "http://localhost:3000").replace(/\/$/, "")}/accept-invite?token=${encodeURIComponent(rawToken)}`;
     const delivery = await sendTransactionalEmail({ to: row.email, subject: "Join your OceanBrown workspace", text: `Accept your invitation within 7 days: ${inviteUrl}`, html: `<p>You have been invited to an OceanBrown workspace.</p><p><a href="${inviteUrl}">Accept invitation</a></p>` }).catch(err => { req.log.error({ err, inviteId: row.id }, "Team invitation email failed"); return { delivered: false as const }; });
     req.log.info({ inviteId: row.id, delivered: delivery.delivered }, "Team invitation created");
-    return reply.code(201).send({ ...row, ...(!config.isProd ? { inviteToken: rawToken } : {}) });
+    return reply.code(201).send({ ...row, ...(config.devExposeTokens ? { inviteToken: rawToken } : {}) });
   });
 
   app.get("/team/invites/accept/:token", async (req, reply) => {
