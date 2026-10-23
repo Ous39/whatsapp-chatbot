@@ -16,11 +16,12 @@ This release fixes the four production blockers from the 23 October 2026 audit p
 | Login | Per-IP limit only; `TRUST_PROXY=true` let clients spoof their IP | 10 failures lock the account for 15 minutes; `TRUST_PROXY=1` (hop count) is supported and `true` is treated as 1 outside development |
 | Webhook size | 1 MB limit | 3 MB on `/webhooks/meta`, as Meta documents |
 | Ports | API (4000) and web (3000) published on all interfaces | Bound to `127.0.0.1`; the reverse proxy on the host forwards to them |
+| Industry templates | Signup published 8 example FAQs (hours, return policy, delivery times) and switched AI replies on, so the AI quoted policies the business never set | Template FAQs arrive as drafts and AI replies stay off until the owner reviews knowledge |
 | Backups | Documented only | `scripts/backup.sh`: encrypted nightly dump, off-server copy, restore drill |
 
 ## Before you deploy
 
-1. **Reverse proxy.** Ports 3000 and 4000 now listen only on `127.0.0.1`. If Caddy or Nginx runs on the same host, nothing changes. If it runs in another container or machine, or people open the server by IP, adjust the `ports` lines in `docker-compose.yml` first.
+1. **Reverse proxy.** Ports 3000 and 4000 now listen only on `127.0.0.1`. The `nginx` service in `docker-compose.yml` reaches `web` and `api` over Docker's internal network, so it is unaffected. It expects `nginx.conf` and `nginx-ssl/` (certificate and key) next to `docker-compose.yml`; both stay out of git. Set `TRUST_PROXY=1` so rate limits see real client IPs instead of nginx's, and make sure `nginx.conf` sends `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` to the API.
 2. **Environment.** In the server `.env`: `JWT_SECRET` (≥ 32 random characters, a new value), `ENCRYPTION_KEY` (64 hex characters — keep the existing one, or saved WhatsApp tokens become unreadable), `TRUST_PROXY=1`. Remove `DEV_EXPOSE_TOKENS` and `SEED_ALLOW_PRODUCTION` if present. The containers will not start without valid `JWT_SECRET` and `ENCRYPTION_KEY`.
 3. **Shared Meta token.** If a workspace relied on `META_ACCESS_TOKEN`, set `META_ACCESS_TOKEN_BUSINESS_ID` to that workspace's id (`docker compose exec postgres psql -U oceanbrown -d oceanbrown -c 'SELECT id, name FROM "Business";'`).
 4. **Backup first:** `docker compose exec -T postgres pg_dump -U oceanbrown --format=custom oceanbrown > pre-p0.dump`.

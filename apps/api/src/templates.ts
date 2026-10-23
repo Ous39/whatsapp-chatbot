@@ -18,11 +18,14 @@ export async function provisionIndustryTemplate(businessId: string, industryKey:
       return;
     }
 
+    // Starter FAQs are examples ("open 9 AM to 6 PM", "returns within 14 days"), not this business's facts.
+    // They arrive as DRAFT so the AI never tells real customers a policy the owner did not write;
+    // the owner edits and publishes them in Knowledge.
     const faqs = industry.faqs.map(faq => ({
       businessId,
       title: faq.title,
       content: faq.content,
-      status: "PUBLISHED" as const,
+      status: "DRAFT" as const,
     }));
 
     await db.$transaction(async tx => {
@@ -34,7 +37,7 @@ export async function provisionIndustryTemplate(businessId: string, industryKey:
         where: { id: businessId },
         data: {
           welcomeMessage: industry.welcomeMessage,
-          automationEnabled: industry.automationEnabled,
+          // AI auto-replies stay off until the owner has reviewed knowledge and switches them on in Settings.
           defaultLanguage: industry.defaultLanguage,
           templateAppliedAt: new Date(),
         },
