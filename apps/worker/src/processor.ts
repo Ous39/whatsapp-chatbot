@@ -3,6 +3,7 @@ import { prepareVoiceNote } from "./audio.js";
 import {
   canSpeak,
   detectIntent,
+  detectLanguageRequest,
   detectTextLanguage,
   downloadMedia,
   handoverText,
@@ -42,7 +43,15 @@ const env = {
 export function aiConfigFromEnv(): AiConfig {
   const provider = resolveAiProvider(process.env.AI_PROVIDER);
   const apiKey = provider === "openai" ? process.env.OPENAI_API_KEY : provider === "anthropic" ? process.env.ANTHROPIC_API_KEY : undefined;
-  return { provider: apiKey ? provider : "simulator", apiKey: apiKey || undefined, model: process.env.AI_MODEL || undefined };
+  const needsKey = provider === "openai" || provider === "anthropic";
+  return {
+    provider: needsKey && !apiKey ? "simulator" : provider,
+    apiKey: apiKey || undefined,
+    model: process.env.AI_MODEL || undefined,
+    baseUrl: process.env.AI_BASE_URL || undefined,
+    timeoutMs: Math.max(1000, Number(process.env.AI_TIMEOUT_MS) || 90000),
+    maxOutputTokens: Math.max(32, Number(process.env.AI_MAX_OUTPUT_TOKENS) || 160),
+  };
 }
 
 // Wolof texts should be reviewed by a native speaker before launch (Settings lets each business override handover text).
@@ -147,7 +156,8 @@ async function handleInbound(item: InboundMessage, enqueue: Enqueue, log: Logger
       log.warn({ messageId: item.messageId, err: voiceMeta.transcriptError }, "Voice note not transcribed");
     }
   }
-  language ??= detectTextLanguage(text) ?? normalizeLang(customer.language);
+  // An explicit request ("make it English") wins; otherwise the voice note's language, the text, then the last one used.
+  language = (transcriptOk ? detectLanguageRequest(text) : null) ?? language ?? detectTextLanguage(text) ?? normalizeLang(customer.language);
   if (language && language !== customer.language) await db.customer.update({ where: { id: customer.id }, data: { language } });
   const replyLang: Lang = language ?? (normalizeLang((await db.business.findUnique({ where: { id: businessId }, select: { defaultLanguage: true } }))?.defaultLanguage) ?? "en");
 

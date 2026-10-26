@@ -24,8 +24,10 @@ const store = vi.hoisted(() => {
       s.touchedB = [];
       s.rows = {
         business: [
-          { id: a, name: "Alpha", slug: "alpha", planStatus: "ACTIVE", plan: "FREE", monthlyMessageLimit: 250, currentPeriodStart: new Date(), automationEnabled: false },
-          { id: b, name: "SECRET-B", slug: "secret-b", planStatus: "ACTIVE", plan: "FREE", monthlyMessageLimit: 250, currentPeriodStart: new Date(), automationEnabled: false },
+          { id: a, name: "Alpha", slug: "alpha", planStatus: "ACTIVE", plan: "FREE", monthlyMessageLimit: 250, currentPeriodStart: new Date(), automationEnabled: false,
+            users: [{ email: "a@example.gm" }], whatsappConnections: [], _count: { users: 1, customers: 0, campaigns: 0, supportRequests: 0 } },
+          { id: b, name: "SECRET-B", slug: "secret-b", planStatus: "ACTIVE", plan: "FREE", monthlyMessageLimit: 250, currentPeriodStart: new Date(), automationEnabled: false,
+            users: [{ email: "SECRET-B@example.gm" }], whatsappConnections: [], _count: { users: 1, customers: 0, campaigns: 0, supportRequests: 0 } },
         ],
         user: [
           { id: "owner-a", businessId: a, email: "a@example.gm", name: "Owner A", role: "OWNER", active: true, passwordChangedAt: null, business: { planStatus: "ACTIVE" } },
@@ -41,7 +43,10 @@ const store = vi.hoisted(() => {
         campaign: pair("campaign", { status: "DRAFT" }),
         automation: pair("automation", { enabled: false }),
         savedReply: pair("savedReply"),
-        supportRequest: pair("supportRequest", { topic: "OTHER", message: "SECRET-B", status: "OPEN" }),
+        supportRequest: [
+          { id: "supportRequest-a", businessId: a, name: "Alpha row", title: "Alpha row", content: "alpha", topic: "OTHER", message: "alpha-message", status: "OPEN" },
+          { id: "supportRequest-b", businessId: b, name: "SECRET-B", title: "SECRET-B", content: "SECRET-B", topic: "OTHER", message: "SECRET-B", status: "OPEN" },
+        ],
         whatsAppConnection: pair("whatsAppConnection", { phoneNumberId: "1111", status: "CONNECTED" }),
         templateInstallation: [],
         auditLog: [],
@@ -184,9 +189,11 @@ describe("provider admin is staff-only", () => {
   });
 
   it("is available to OceanBrown staff", async () => {
-    store.rows.user.push({ id: "staff", businessId: "bizA", email: "staff@oceanbrown.gm", name: "Staff", role: "SUPER_ADMIN", active: true, passwordChangedAt: null, business: { planStatus: "ACTIVE" } });
+    const users = store.rows.user;
+    if (!users) throw new Error("Test fixture did not initialize users");
+    users.push({ id: "staff", businessId: "bizA", email: "staff@oceanbrown.gm", name: "Staff", role: "SUPER_ADMIN", active: true, passwordChangedAt: null, business: { planStatus: "ACTIVE" } });
     const res = await call("GET", "/platform/businesses", undefined, cookieSuper);
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode, res.body).toBe(200);
   });
 });
 
@@ -214,7 +221,9 @@ describe("customers never handle technical WhatsApp details", () => {
 
 describe("suspended workspaces", () => {
   it("can read but cannot change settings", async () => {
-    const owner = store.rows.user.find(u => u.id === "owner-a");
+    const users = store.rows.user;
+    const owner = users?.find(u => u.id === "owner-a");
+    if (!owner) throw new Error("Test fixture is missing owner-a");
     owner.business = { planStatus: "SUSPENDED" };
     expect((await call("GET", "/business")).statusCode).toBe(200);
     expect((await call("PATCH", "/business", { welcomeMessage: "Hi" })).statusCode).toBe(403);

@@ -118,3 +118,14 @@ a.metric{text-decoration:none;color:inherit}
   .wizard-nav .btn{flex:1}
   .preview .compose{flex-direction:column}
 }
+
+/* Knowledge */
+.knowledge-toolbar{flex-wrap:wrap}
+.knowledge-toolbar .input{flex:1;min-width:200px}
+.knowledge-list{display:grid;gap:12px}
+.knowledge-item h3{margin:0;font-size:16px}
+.knowledge-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.knowledge-content{white-space:pre-wrap;font-size:14px;line-height:1.55;margin:10px 0}
+.knowledge-editor{display:grid;gap:12px;margin-bottom:12px}
+.knowledge-editor label{display:grid;gap:6px;font-size:13px;color:var(--muted)}
+.warn-text{color:var(--warn)}

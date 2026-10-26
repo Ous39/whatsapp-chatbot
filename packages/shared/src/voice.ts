@@ -25,6 +25,23 @@ const MARKERS: Record<Lang, string[]> = {
  * Lightweight text language guess for EN/FR/WO. Returns null when the
  * evidence is too thin (e.g. "ok") so callers can keep the previous language.
  */
+/**
+ * "make it english", "reply in French", "en français svp", "wax ci wolof": the customer asks for a language.
+ * Takes priority over automatic detection, which can't tell from one-word messages.
+ */
+export function detectLanguageRequest(text: string): Lang | null {
+  const t = text.toLowerCase().normalize("NFC");
+  const names: [Lang, string][] = [["en", "english|anglais|angale"], ["fr", "french|fran[cç]ais|faransee"], ["wo", "wolof"]];
+  for (const [lang, name] of names) {
+    const asks = new RegExp(
+      `\\b(?:in|to|into|speak|use|reply in|answer in|write in|talk in|make it|switch to|convert to|change to|en|parle[rz]?|parlez|r[ée]pond(?:ez|s)? en|[ée]cri(?:s|vez) en|wax ci|bind ci|ci)\\s+(?:${name})\\b|^\\s*(?:${name})\\s*(?:please|pls|svp|s'il (?:te|vous) pla[iî]t)?\\s*[.!?]*\\s*$`,
+      "i",
+    );
+    if (asks.test(t) && !new RegExp(`(?:${name})\\s+(?:tea|food|website|site|class|course|people|version)`, "i").test(t)) return lang;
+  }
+  return null;
+}
+
 export function detectTextLanguage(text: string): Lang | null {
   const words = text.toLowerCase().normalize("NFC").replace(/[^\p{L}\p{N}' ]/gu, " ").split(/\s+/).filter(Boolean);
   if (!words.length) return null;

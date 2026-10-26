@@ -19,13 +19,23 @@ function jwtSecret() {
 }
 
 /** Accepts "false", "true", a hop count ("1") or a comma-separated list of proxy IPs/CIDRs. */
-function trustProxy(): boolean | number | string[] {
+function trustProxy(): boolean | string[] | ((address: string, hop: number) => boolean) {
   const value = (process.env.TRUST_PROXY ?? "").trim();
   if (!value || value === "false") return false;
-  if (/^\d+$/.test(value)) return Number(value);
-  // "true" trusts every X-Forwarded-For hop, so a client can spoof its IP and dodge rate limits.
-  // One reverse proxy in front of the API should use TRUST_PROXY=1.
-  if (value === "true") return isDevOrTest ? true : 1;
+
+  // Fastify 5 accepts a trust function rather than a numeric hop count.
+  // Trust only the configured number of proxy hops.
+  if (/^\d+$/.test(value)) {
+    const hops = Number(value);
+    return (_address, hop) => hop < hops;
+  }
+
+  // "true" trusts every X-Forwarded-For hop. In production, trust only one proxy.
+  if (value === "true") {
+    if (isDevOrTest) return true;
+    return (_address, hop) => hop < 1;
+  }
+
   return value.split(",").map(s => s.trim()).filter(Boolean);
 }
 
@@ -69,11 +79,18 @@ export const config = {
   },
   ai: {
     provider: resolveAiProvider(process.env.AI_PROVIDER),
-    apiKey: process.env.AI_PROVIDER === "openai" ? process.env.OPENAI_API_KEY || undefined : process.env.ANTHROPIC_API_KEY || undefined,
+    apiKey: process.env.AI_PROVIDER === "openai" ? process.env.OPENAI_API_KEY || undefined : process.env.AI_PROVIDER === "anthropic" ? process.env.ANTHROPIC_API_KEY || undefined : undefined,
     model: process.env.AI_MODEL || undefined,
+    baseUrl: process.env.AI_BASE_URL || undefined,
   },
 };
 
 export function aiConfig() {
-  return { provider: config.ai.apiKey ? config.ai.provider : ("simulator" as const), apiKey: config.ai.apiKey, model: config.ai.model };
+  const needsKey = config.ai.provider === "openai" || config.ai.provider === "anthropic";
+  return {
+    provider: needsKey && !config.ai.apiKey ? ("simulator" as const) : config.ai.provider,
+    apiKey: config.ai.apiKey,
+    model: config.ai.model,
+    baseUrl: config.ai.baseUrl,
+  };
 }
